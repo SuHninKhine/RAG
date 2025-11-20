@@ -1,40 +1,77 @@
 ﻿"use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { SendHorizontal } from "lucide-react";
 
 import ChatMessage from "./chatMessage";
+import type { SourceInfo } from "../../lib/api";
+import { askQuestion } from "../../lib/api";
+
+type ChatMessageItem = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  sources?: SourceInfo[];
+};
 
 type ChatPanelProps = {
   onOpenDocument: (filename: string, page?: number) => void;
 };
 
 export default function ChatPanel({ onOpenDocument }: ChatPanelProps) {
-  const messages = useMemo(
+  const initialMessages = useMemo<ChatMessageItem[]>(
     () => [
       {
-        role: "user" as const,
+        id: "1",
+        role: "user",
         content: "What are the limitations on covered services for adults?",
       },
       {
-        role: "assistant" as const,
+        id: "2",
+        role: "assistant",
         content:
           "The document states that adult dental care is generally not covered by the plan. [1]\n\n_Pages: 5_",
-        source: { filename: "BenefitsSummary.pdf", page: 5, label: "View source [1]" },
-      },
-      {
-        role: "user" as const,
-        content: "Can you summarize the renewal process?",
-      },
-      {
-        role: "assistant" as const,
-        content:
-          "Renewal typically occurs automatically if the account remains in good standing, otherwise a standard acceptance flow applies. [2]",
-        source: { filename: "CSPNavigationTraining.pdf", page: 3, label: "View source [2]" },
+        sources: [{ filename: "BenefitsSummary.pdf", pages: [5], url: "/documents/BenefitsSummary.pdf" }],
       },
     ],
     []
   );
+
+  const [messages, setMessages] = useState<ChatMessageItem[]>(initialMessages);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim()) return;
+
+    const userMessage: ChatMessageItem = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: input,
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await askQuestion(userMessage.content);
+      const assistantMessage: ChatMessageItem = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: response.answer,
+        sources: response.sources,
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -48,42 +85,47 @@ export default function ChatPanel({ onOpenDocument }: ChatPanelProps) {
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-4 px-4 pt-6 pb-4">
-            {messages.map((msg, idx) => (
-              <div key={idx} className="flex flex-col gap-2">
+            {messages.map((msg) => (
+              <div key={msg.id} className="flex flex-col gap-2">
                 <ChatMessage role={msg.role} content={msg.content} />
-                {msg.role === "assistant" && msg.source && (
-                  <button
-                    className="self-start text-sm text-[#0f766e] hover:underline"
-                    onClick={() => onOpenDocument(msg.source!.filename, msg.source!.page)}
-                  >
-                    {msg.source.label}
-                  </button>
+                {msg.role === "assistant" && msg.sources && msg.sources.length > 0 && (
+                  <div className="mt-1 text-xs text-neutral-500">
+                    Sources:
+                    {msg.sources.map((src, index) => (
+                      <button
+                        key={src.filename + index}
+                        type="button"
+                        className="ml-2 underline hover:text-neutral-800"
+                        onClick={() => onOpenDocument(src.filename, src.pages?.[0])}
+                      >
+                        {src.filename} (p{src.pages?.[0] ?? "?"})
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
             ))}
+            {loading && <div className="text-xs text-neutral-500">Thinking...</div>}
           </div>
 
           <div className="border-t border-neutral-200 p-4">
-            <form
-              className="space-y-3"
-              onSubmit={(e) => {
-                e.preventDefault();
-                // placeholder
-                console.log("Send message");
-              }}
-            >
+            <form className="space-y-3" onSubmit={handleSubmit}>
               <textarea
                 className="w-full border border-neutral-200 rounded-md px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#3b7f5c] focus:border-transparent bg-white"
                 placeholder="Ask about your documents..."
                 rows={3}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
               />
+              {error && <div className="text-sm text-rose-600">{error}</div>}
               <div className="flex justify-end">
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-[#3b7f5c] text-white hover:bg-[#346e51]"
+                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-[#3b7f5c] text-white hover:bg-[#346e51] disabled:opacity-60"
+                  disabled={loading}
                 >
                   <SendHorizontal className="h-4 w-4" />
-                  Send
+                  {loading ? "Sending" : "Send"}
                 </button>
               </div>
             </form>

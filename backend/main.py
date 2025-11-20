@@ -81,4 +81,9 @@ async def get_document(filename: str):
     path = config.DOCUMENTS_DIR / safe_name
     if not path.exists():
         raise HTTPException(status_code=404, detail="Document not found.")
-    return FileResponse(path, media_type="application/pdf", filename=safe_name)
+    # Force inline display so the browser renders the PDF instead of downloading.
+    return FileResponse(
+        path,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{safe_name}"'},
+    )

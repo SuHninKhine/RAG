@@ -6,14 +6,22 @@ import { BACKEND_URL } from "../../lib/api";
 type DocumentViewerPanelProps = {
   filename?: string;
   page?: number;
+  snippet?: string;
   onClose: () => void;
 };
 
-export default function DocumentViewerPanel({ filename, page, onClose }: DocumentViewerPanelProps) {
+export default function DocumentViewerPanel({ filename, page, snippet, onClose }: DocumentViewerPanelProps) {
   const fileUrl = filename ? `${BACKEND_URL}/documents/${encodeURIComponent(filename)}` : null;
-  const pageParam = page ?? 1;
-  // Use direct file URL for now; if PDF.js is added under /public/pdfjs/, swap to the viewer path.
-  const viewerUrl = fileUrl ? `${fileUrl}#page=${pageParam}` : null;
+  const pageNumber = page ?? 1;
+  const searchTerm = snippet ? encodeURIComponent(snippet.slice(0, 80)) : "";
+  // Default to direct inline PDF. If you add PDF.js under /public/pdfjs, swap viewerUrl to pdfjsUrl.
+  const pdfjsUrl = fileUrl
+    ? `/pdfjs/web/viewer.html?file=${encodeURIComponent(fileUrl)}#page=${pageNumber}${
+        searchTerm ? `&search=${searchTerm}` : ""
+      }`
+    : null;
+  const fallbackUrl = fileUrl ? `${fileUrl}#page=${pageNumber}` : null;
+  const viewerUrl = fallbackUrl; // change to pdfjsUrl when PDF.js is available
 
   return (
     <aside className="w-[380px] h-full border-l border-neutral-200 bg-white flex flex-col">
@@ -33,9 +41,22 @@ export default function DocumentViewerPanel({ filename, page, onClose }: Documen
         </button>
       </div>
 
-      <div className="flex-1 flex items-center justify-center p-4">
+      <div className="flex-1 flex flex-col p-4">
+        {snippet && (
+          <div className="mb-2 rounded-md border border-neutral-200 bg-neutral-50 p-2 text-[11px] text-neutral-700">
+            <span className="font-medium text-[10px] uppercase tracking-wide text-neutral-500">
+              Highlighted text
+            </span>
+            <div className="mt-1 line-clamp-3">{snippet}</div>
+          </div>
+        )}
         {viewerUrl ? (
-          <iframe src={viewerUrl} className="w-full h-full border-0" title={filename ?? "Document viewer"} />
+          <iframe
+            key={`${filename ?? "doc"}-${page ?? 1}`}
+            src={viewerUrl}
+            className="w-full flex-1 border-0"
+            title={filename ?? "Document viewer"}
+          />
         ) : (
           <div className="text-center text-neutral-600 space-y-1">
             <p className="text-sm font-medium">No document opened yet.</p>

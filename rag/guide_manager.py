@@ -148,26 +148,50 @@ class GuideManager:
         all_scored.sort(key=lambda item: item[1])
 
         context_parts = [chunk.text for chunk, _ in all_scored]
-        context = "\n\n---\n\n".join(context_parts)
-        answer = call_llm(context, question)
+        merged_context = "\n\n---\n\n".join(context_parts)
 
-        sources: Dict[str, Dict[str, object]] = defaultdict(
-            lambda: {"filename": "", "pages": set(), "filepath": ""}
+        # Aggregate sources with representative snippet.
+        sources_used: Dict[str, Dict[str, object]] = defaultdict(
+            lambda: {"filename": "", "pages": set(), "filepath": "", "snippet_chunk": None}
         )
         for chunk, _ in all_scored:
-            meta = sources[chunk.source]
+            meta = sources_used[chunk.source]
             meta["filename"] = chunk.source
             meta["filepath"] = chunk.filepath
             meta["pages"].add(chunk.page)
+            if meta["snippet_chunk"] is None:
+                meta["snippet_chunk"] = chunk
 
-        source_list = [
-            {
-                "filename": meta["filename"],
-                "pages": sorted(meta["pages"]),
-                "filepath": meta["filepath"],
-            }
-            for meta in sources.values()
-        ]
+        # Build ordered list with ids and snippets.
+        source_list: List[Dict[str, object]] = []
+        for idx, meta in enumerate(sorted(sources_used.values(), key=lambda m: m["filename"]), start=1):
+            snippet_chunk: Chunk | None = meta["snippet_chunk"]
+            snippet_text = ""
+            primary_page = None
+            if snippet_chunk:
+                snippet_text = snippet_chunk.text.replace("\n", " ").strip()[:200]
+                primary_page = snippet_chunk.page
+            source_list.append(
+                {
+                    "id": idx,
+                    "filename": meta["filename"],
+                    "pages": sorted(meta["pages"]),
+                    "filepath": meta["filepath"],
+                    "snippet": snippet_text,
+                    "primary_page": primary_page,
+                }
+            )
+
+        # Append source index to context for the LLM.
+        if source_list:
+            lines = []
+            for src in source_list:
+                pages_str = ", ".join(str(p) for p in src["pages"])
+                lines.append(f"[{src['id']}] {src['filename']} (pages: {pages_str})")
+            sources_index = "SOURCE INDEX:\n" + "\n".join(lines)
+            merged_context = merged_context + "\n\n" + sources_index
+
+        answer = call_llm(merged_context, question)
 
         return answer, source_list
 

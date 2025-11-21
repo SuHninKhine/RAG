@@ -15,10 +15,27 @@ type ChatMessageItem = {
 };
 
 type ChatPanelProps = {
-  onOpenDocument: (filename: string, page?: number) => void;
+  onOpenDocument: (source: SourceInfo, page?: number) => void;
+  onResetDocument?: () => void;
 };
 
-export default function ChatPanel({ onOpenDocument }: ChatPanelProps) {
+export default function ChatPanel({ onOpenDocument, onResetDocument }: ChatPanelProps) {
+  const linkifyCitations = (answer: string, sources: SourceInfo[] | undefined): string => {
+    if (!sources || sources.length === 0) return answer;
+    let output = answer;
+    for (const { id } of sources) {
+      const cid = Number(id);
+      if (Number.isNaN(cid)) continue;
+      // Replace bracketed citations like [1]
+      const bracketRe = new RegExp(`\\[${cid}\\]`, "g");
+      output = output.replace(bracketRe, `[${cid}](citation://${cid})`);
+      // Replace bare numbers at boundaries (start or whitespace) followed by non-digit
+      const bareRe = new RegExp(`(^|\\s)${cid}(?=[^\\d]|$)`, "g");
+      output = output.replace(bareRe, `$1[${cid}](citation://${cid})`);
+    }
+    return output;
+  };
+
   const initialMessages = useMemo<ChatMessageItem[]>(
     () => [
       {
@@ -31,7 +48,7 @@ export default function ChatPanel({ onOpenDocument }: ChatPanelProps) {
         role: "assistant",
         content:
           "The document states that adult dental care is generally not covered by the plan. [1]\n\n_Pages: 5_",
-        sources: [{ filename: "BenefitsSummary.pdf", pages: [5], url: "/documents/BenefitsSummary.pdf" }],
+        sources: [{ id: 1, filename: "BenefitsSummary.pdf", pages: [5], url: "/documents/BenefitsSummary.pdf" }],
       },
     ],
     []
@@ -44,7 +61,10 @@ export default function ChatPanel({ onOpenDocument }: ChatPanelProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim()) return;
+    if (!input.trim() || loading) return;
+    if (onResetDocument) {
+      onResetDocument();
+    }
 
     const userMessage: ChatMessageItem = {
       id: crypto.randomUUID(),
@@ -59,10 +79,11 @@ export default function ChatPanel({ onOpenDocument }: ChatPanelProps) {
 
     try {
       const response = await askQuestion(userMessage.content);
+      const linkedAnswer = linkifyCitations(response.answer, response.sources);
       const assistantMessage: ChatMessageItem = {
         id: crypto.randomUUID(),
         role: "assistant",
-        content: response.answer,
+        content: linkedAnswer,
         sources: response.sources,
       };
       setMessages((prev) => [...prev, assistantMessage]);
@@ -87,18 +108,31 @@ export default function ChatPanel({ onOpenDocument }: ChatPanelProps) {
           <div className="flex-1 overflow-y-auto space-y-4 px-4 pt-6 pb-4">
             {messages.map((msg) => (
               <div key={msg.id} className="flex flex-col gap-2">
-                <ChatMessage role={msg.role} content={msg.content} />
+                <ChatMessage
+                  role={msg.role}
+                  content={msg.content}
+                  onCitationClick={
+                    msg.role === "assistant"
+                      ? (id) => {
+                          const source = msg.sources?.find((s) => s.id === id);
+                          if (source) {
+                            onOpenDocument(source, source.primaryPage ?? source.pages?.[0]);
+                          }
+                        }
+                      : undefined
+                  }
+                />
                 {msg.role === "assistant" && msg.sources && msg.sources.length > 0 && (
-                  <div className="mt-1 text-xs text-neutral-500">
-                    Sources:
-                    {msg.sources.map((src, index) => (
+                  <div className="mt-2 text-xs text-neutral-500 flex flex-wrap items-center gap-2">
+                    <span className="uppercase tracking-wide text-[10px] text-neutral-400">Sources</span>
+                    {msg.sources.map((src) => (
                       <button
-                        key={src.filename + index}
+                        key={src.id}
                         type="button"
-                        className="ml-2 underline hover:text-neutral-800"
-                        onClick={() => onOpenDocument(src.filename, src.pages?.[0])}
+                        className="inline-flex items-center justify-center rounded-full border border-neutral-300 px-2 py-0.5 text-[11px] font-medium text-neutral-700 hover:bg-neutral-100"
+                        onClick={() => onOpenDocument(src, src.primaryPage ?? src.pages?.[0])}
                       >
-                        {src.filename} (p{src.pages?.[0] ?? "?"})
+                        [{src.id}]
                       </button>
                     ))}
                   </div>
@@ -111,18 +145,19 @@ export default function ChatPanel({ onOpenDocument }: ChatPanelProps) {
           <div className="border-t border-neutral-200 p-4">
             <form className="space-y-3" onSubmit={handleSubmit}>
               <textarea
-                className="w-full border border-neutral-200 rounded-md px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#3b7f5c] focus:border-transparent bg-white"
+                className="w-full border border-neutral-200 rounded-md px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#3b7f5c] focus:border-transparent bg-white disabled:opacity-60"
                 placeholder="Ask about your documents..."
                 rows={3}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
+                disabled={loading}
               />
               {error && <div className="text-sm text-rose-600">{error}</div>}
               <div className="flex justify-end">
                 <button
                   type="submit"
                   className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-[#3b7f5c] text-white hover:bg-[#346e51] disabled:opacity-60"
-                  disabled={loading}
+                  disabled={loading || !input.trim()}
                 >
                   <SendHorizontal className="h-4 w-4" />
                   {loading ? "Sending" : "Send"}

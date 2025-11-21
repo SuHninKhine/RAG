@@ -5,7 +5,7 @@ Run with: uvicorn backend.main:app --reload --port 8000
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from fastapi import File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,6 +36,20 @@ class QueryRequest(BaseModel):
     question: str
 
 
+class SourceInfo(BaseModel):
+    id: int
+    filename: str
+    pages: List[int]
+    url: str
+    snippet: Optional[str] = None
+    primary_page: Optional[int] = None
+
+
+class QueryResponse(BaseModel):
+    answer: str
+    sources: List[SourceInfo]
+
+
 @app.post("/upload-guides")
 async def upload_guides(files: List[UploadFile] = File(...)) -> dict:
     """Ingest one or more PDF guides into the RAG system."""
@@ -61,8 +75,8 @@ async def upload_guides(files: List[UploadFile] = File(...)) -> dict:
     }
 
 
-@app.post("/query")
-async def query(req: QueryRequest) -> dict:
+@app.post("/query", response_model=QueryResponse)
+async def query(req: QueryRequest) -> QueryResponse:
     """Answer a user question using the loaded guides."""
 
     question = req.question.strip()
@@ -70,7 +84,19 @@ async def query(req: QueryRequest) -> dict:
         raise HTTPException(status_code=400, detail="Question must not be empty.")
 
     answer, sources = guide_manager.answer_question(question)
-    return {"answer": answer, "sources": sources}
+    source_models = []
+    for src in sources:
+        source_models.append(
+            SourceInfo(
+                id=int(src.get("id", 0)),
+                filename=str(src.get("filename", "")),
+                pages=list(src.get("pages", [])),
+                url=f"/documents/{src.get('filename', '')}",
+                snippet=src.get("snippet"),
+                primary_page=src.get("primary_page"),
+            )
+        )
+    return QueryResponse(answer=answer, sources=source_models)
 
 
 @app.get("/documents/{filename}")

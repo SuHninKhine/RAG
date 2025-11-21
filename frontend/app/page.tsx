@@ -6,16 +6,20 @@ import { PanelLeft, PanelRight, PanelRightOpen } from "lucide-react";
 import Sidebar from "./components/sidebar";
 import ChatPanel from "./components/chatPanel";
 import DocumentViewerPanel from "./components/documentViewerPanel";
-import type { GuideInfo } from "../lib/api";
+import type { GuideInfo, SourceInfo } from "../lib/api";
 
 export default function HomePage() {
   const [showSidebar, setShowSidebar] = useState(true);
   const [showDocPanel, setShowDocPanel] = useState(true);
-  const [docMeta, setDocMeta] = useState<{ filename?: string; page?: number }>({});
+  const [docMeta, setDocMeta] = useState<{ filename?: string; page?: number; snippet?: string }>({});
   const [guides, setGuides] = useState<GuideInfo[]>([]);
 
-  const handleOpenDocument = (filename: string, page?: number) => {
-    setDocMeta({ filename, page });
+  const handleOpenDocument = (source: SourceInfo, page?: number) => {
+    setDocMeta({
+      filename: source.filename,
+      page: page ?? source.primaryPage ?? source.pages?.[0],
+      snippet: source.snippet,
+    });
     setShowDocPanel(true);
   };
 
@@ -30,6 +34,10 @@ export default function HomePage() {
       }
       return merged;
     });
+  };
+
+  const handleResetDocument = () => {
+    setDocMeta({});
   };
 
   return (
@@ -60,7 +68,7 @@ export default function HomePage() {
         </div>
 
         <div className="flex-1 flex overflow-hidden">
-          <ChatPanel onOpenDocument={handleOpenDocument} />
+          <ChatPanel onOpenDocument={handleOpenDocument} onResetDocument={handleResetDocument} />
         </div>
       </div>
 
@@ -68,6 +76,7 @@ export default function HomePage() {
         <DocumentViewerPanel
           filename={docMeta.filename}
           page={docMeta.page}
+          snippet={docMeta.snippet}
           onClose={() => setShowDocPanel(false)}
         />
       )}

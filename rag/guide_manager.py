@@ -150,46 +150,49 @@ class GuideManager:
         context_parts = [chunk.text for chunk, _ in all_scored]
         merged_context = "\n\n---\n\n".join(context_parts)
 
-        # Aggregate sources with representative snippet.
-        sources_used: Dict[str, Dict[str, object]] = defaultdict(
-            lambda: {"filename": "", "pages": set(), "filepath": "", "snippet_chunk": None}
-        )
+        # Treat each retrieved chunk as its own source to make citations granular
+        # and label context sections with the same ids shown to the LLM.
+        source_entries: List[Dict[str, object]] = []
+        seen_chunks: set[int] = set()
         for chunk, _ in all_scored:
-            meta = sources_used[chunk.source]
-            meta["filename"] = chunk.source
-            meta["filepath"] = chunk.filepath
-            meta["pages"].add(chunk.page)
-            if meta["snippet_chunk"] is None:
-                meta["snippet_chunk"] = chunk
-
-        # Build ordered list with ids and snippets.
-        source_list: List[Dict[str, object]] = []
-        for idx, meta in enumerate(sorted(sources_used.values(), key=lambda m: m["filename"]), start=1):
-            snippet_chunk: Chunk | None = meta["snippet_chunk"]
-            snippet_text = ""
-            primary_page = None
-            if snippet_chunk:
-                snippet_text = snippet_chunk.text.replace("\n", " ").strip()[:200]
-                primary_page = snippet_chunk.page
-            source_list.append(
+            if chunk.chunk_id in seen_chunks:
+                continue
+            seen_chunks.add(chunk.chunk_id)
+            source_entries.append(
                 {
-                    "id": idx,
-                    "filename": meta["filename"],
-                    "pages": sorted(meta["pages"]),
-                    "filepath": meta["filepath"],
-                    "snippet": snippet_text,
-                    "primary_page": primary_page,
+                    "id": len(source_entries) + 1,
+                    "chunk": chunk,
+                    "filename": chunk.source,
+                    "pages": [chunk.page],
+                    "filepath": chunk.filepath,
+                    "snippet": chunk.text.replace("\n", " ").strip()[:200],
+                    "primary_page": chunk.page,
                 }
             )
 
-        # Append source index to context for the LLM.
-        if source_list:
+        # Build labeled context so inline citations map to the right chunk ids.
+        if source_entries:
+            labeled_parts = [f"[{entry['id']}] {entry['chunk'].text}" for entry in source_entries]
+            merged_context = "\n\n---\n\n".join(labeled_parts)
             lines = []
-            for src in source_list:
-                pages_str = ", ".join(str(p) for p in src["pages"])
-                lines.append(f"[{src['id']}] {src['filename']} (pages: {pages_str})")
+            for entry in source_entries:
+                pages_str = ", ".join(str(p) for p in entry["pages"])
+                lines.append(f"[{entry['id']}] {entry['filename']} (pages: {pages_str})")
             sources_index = "SOURCE INDEX:\n" + "\n".join(lines)
             merged_context = merged_context + "\n\n" + sources_index
+
+        # Strip chunk objects for the response payload.
+        source_list = [
+            {
+                "id": entry["id"],
+                "filename": entry["filename"],
+                "pages": entry["pages"],
+                "filepath": entry["filepath"],
+                "snippet": entry["snippet"],
+                "primary_page": entry["primary_page"],
+            }
+            for entry in source_entries
+        ]
 
         answer = call_llm(merged_context, question)
 

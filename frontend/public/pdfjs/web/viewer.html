@@ -1,0 +1,34 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PDF.js Viewer Redirect</title>
+    <style>
+      body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: #f5f5f5; color: #111; margin: 0; }
+      .wrap { padding: 24px; }
+      .card { background: white; border: 1px solid #ddd; border-radius: 8px; padding: 16px; max-width: 640px; }
+      code { background: #f0f0f0; padding: 2px 4px; border-radius: 4px; }
+    </style>
+    <script>
+      (function () {
+        try {
+          const search = window.location.search || "";
+          const hash = window.location.hash || "";
+          const target = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/web/viewer.html${search}${hash}`;
+          window.location.replace(target);
+        } catch (err) {
+          console.error("Redirect to PDF.js failed", err);
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <p>Redirecting to PDF.js viewer…</p>
+        <p>If this does not load, please ensure you have internet access to <code>cdnjs.cloudflare.com</code> and that the URL includes a <code>file</code> parameter.</p>
+      </div>
+    </div>
+  </body>
+</html>

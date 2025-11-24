@@ -7,9 +7,10 @@ export type ChatMessageProps = {
   role: "user" | "assistant";
   content: string;
   onCitationClick?: (id: number) => void;
+  getCitationMeta?: (id: number) => { filename?: string; page?: number } | undefined;
 };
 
-export default function ChatMessage({ role, content, onCitationClick }: ChatMessageProps) {
+export default function ChatMessage({ role, content, onCitationClick, getCitationMeta }: ChatMessageProps) {
   const isUser = role === "user";
 
   const handleBubbleClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -55,6 +56,11 @@ export default function ChatMessage({ role, content, onCitationClick }: ChatMess
                   const citationMatch = text.match(/\d+/);
                   if (onCitationClick && citationMatch) {
                     const id = Number(citationMatch[0]);
+                    const meta = getCitationMeta ? getCitationMeta(id) : undefined;
+                    const title =
+                      meta && meta.filename
+                        ? `${meta.filename}${meta.page ? ` · p${meta.page}` : ""}`
+                        : undefined;
                     const handleClick = () => {
                       if (!Number.isNaN(id)) {
                         onCitationClick(id);
@@ -65,6 +71,7 @@ export default function ChatMessage({ role, content, onCitationClick }: ChatMess
                         type="button"
                         onClick={handleClick}
                         className="inline-flex items-center justify-center rounded-full border border-neutral-300 px-1.5 py-0.5 text-[11px] font-medium text-neutral-700 hover:bg-neutral-100"
+                        title={title}
                       >
                         [{id}]
                       </button>

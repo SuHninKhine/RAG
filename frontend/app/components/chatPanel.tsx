@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { SendHorizontal } from "lucide-react";
 
 import ChatMessage from "./chatMessage";
@@ -58,6 +58,13 @@ export default function ChatPanel({ onOpenDocument, onResetDocument }: ChatPanel
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,8 +103,8 @@ export default function ChatPanel({ onOpenDocument, onResetDocument }: ChatPanel
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="flex-1 flex flex-col max-w-3xl w-full mx-auto my-8 px-4">
-        <div className="bg-white border border-neutral-200 rounded-lg shadow-sm flex-1 flex flex-col h-[calc(100vh-6rem)]">
+      <div className="flex-1 flex flex-col max-w-3xl w-full mx-auto my-8 px-4 overflow-hidden">
+        <div className="bg-white border border-neutral-200 rounded-lg shadow-sm flex-1 flex flex-col h-[calc(100vh-6rem)] overflow-hidden">
           <div className="px-4 pt-5 pb-3 border-b border-neutral-200">
             <h1 className="text-xl font-semibold text-neutral-900">Chat with your documents</h1>
             <p className="text-sm text-neutral-600 mt-1">
@@ -105,7 +112,7 @@ export default function ChatPanel({ onOpenDocument, onResetDocument }: ChatPanel
             </p>
           </div>
 
-          <div className="flex-1 overflow-y-auto space-y-4 px-4 pt-6 pb-4">
+          <div className="flex-1 overflow-y-auto space-y-4 px-4 pt-6 pb-4 pr-2">
             {messages.map((msg) => (
               <div key={msg.id} className="flex flex-col gap-2">
                 <ChatMessage
@@ -121,6 +128,16 @@ export default function ChatPanel({ onOpenDocument, onResetDocument }: ChatPanel
                         }
                       : undefined
                   }
+                  getCitationMeta={
+                    msg.role === "assistant"
+                      ? (id) => {
+                          const source = msg.sources?.find((s) => s.id === id);
+                          return source
+                            ? { filename: source.filename, page: source.primaryPage ?? source.pages?.[0] }
+                            : undefined;
+                        }
+                      : undefined
+                  }
                 />
                 {msg.role === "assistant" && msg.sources && msg.sources.length > 0 && (
                   <div className="mt-2 text-xs text-neutral-500 flex flex-wrap items-center gap-2">
@@ -131,6 +148,7 @@ export default function ChatPanel({ onOpenDocument, onResetDocument }: ChatPanel
                         type="button"
                         className="inline-flex items-center justify-center rounded-full border border-neutral-300 px-2 py-0.5 text-[11px] font-medium text-neutral-700 hover:bg-neutral-100"
                         onClick={() => onOpenDocument(src, src.primaryPage ?? src.pages?.[0])}
+                        title={`${src.filename}${src.primaryPage ?? src.pages?.[0] ? ` · p${src.primaryPage ?? src.pages?.[0]}` : ""}`}
                       >
                         [{src.id}]
                       </button>
@@ -140,6 +158,7 @@ export default function ChatPanel({ onOpenDocument, onResetDocument }: ChatPanel
               </div>
             ))}
             {loading && <div className="text-xs text-neutral-500">Thinking...</div>}
+            <div ref={messagesEndRef} />
           </div>
 
           <div className="border-t border-neutral-200 p-4">

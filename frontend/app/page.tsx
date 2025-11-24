@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { PanelLeft, PanelRight, PanelRightOpen } from "lucide-react";
 
 import Sidebar from "./components/sidebar";
@@ -11,8 +11,12 @@ import type { GuideInfo, SourceInfo } from "../lib/api";
 export default function HomePage() {
   const [showSidebar, setShowSidebar] = useState(true);
   const [showDocPanel, setShowDocPanel] = useState(true);
+  const [docExpanded, setDocExpanded] = useState(false);
   const [docMeta, setDocMeta] = useState<{ filename?: string; page?: number; snippet?: string }>({});
   const [guides, setGuides] = useState<GuideInfo[]>([]);
+  const [docWidth, setDocWidth] = useState<number>(380);
+  const dragRaf = useRef<number | null>(null);
+  const dragActive = useRef(false);
 
   const handleOpenDocument = (source: SourceInfo, page?: number) => {
     setDocMeta({
@@ -38,6 +42,46 @@ export default function HomePage() {
 
   const handleResetDocument = () => {
     setDocMeta({});
+  };
+
+  const handleResizeMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = docWidth;
+    const minWidth = 280;
+    const maxWidth = 900;
+    dragActive.current = true;
+    const body = document.body;
+    const prevUserSelect = body.style.userSelect;
+    body.style.userSelect = "none";
+
+    const handleMove = (ev: MouseEvent) => {
+      if (!dragActive.current) return;
+      const delta = startX - ev.clientX;
+      const next = Math.min(Math.max(startWidth + delta, minWidth), maxWidth);
+      if (dragRaf.current !== null) {
+        return;
+      }
+      dragRaf.current = window.requestAnimationFrame(() => {
+        setDocWidth(next);
+        setDocExpanded(false);
+        dragRaf.current = null;
+      });
+    };
+
+    const handleUp = () => {
+      dragActive.current = false;
+      body.style.userSelect = prevUserSelect;
+      if (dragRaf.current !== null) {
+        window.cancelAnimationFrame(dragRaf.current);
+        dragRaf.current = null;
+      }
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+    };
+
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
   };
 
   return (
@@ -69,17 +113,36 @@ export default function HomePage() {
 
         <div className="flex-1 flex overflow-hidden">
           <ChatPanel onOpenDocument={handleOpenDocument} onResetDocument={handleResetDocument} />
+          {showDocPanel && (
+            <>
+              <div
+                className="w-1 cursor-col-resize bg-neutral-200 hover:bg-neutral-300"
+                onMouseDown={handleResizeMouseDown}
+                title="Drag to resize"
+              />
+              <DocumentViewerPanel
+                filename={docMeta.filename}
+                page={docMeta.page}
+                snippet={docMeta.snippet}
+                expanded={docExpanded}
+                width={docWidth}
+                onToggleExpand={() =>
+                  setDocExpanded((prev) => {
+                    if (!prev) {
+                      const target = Math.max(Math.min(window.innerWidth * 0.6, 1000), 400);
+                      setDocWidth(target);
+                      return true;
+                    }
+                    setDocWidth(380);
+                    return false;
+                  })
+                }
+                onClose={() => setShowDocPanel(false)}
+              />
+            </>
+          )}
         </div>
       </div>
-
-      {showDocPanel && (
-        <DocumentViewerPanel
-          filename={docMeta.filename}
-          page={docMeta.page}
-          snippet={docMeta.snippet}
-          onClose={() => setShowDocPanel(false)}
-        />
-      )}
     </div>
   );
 }

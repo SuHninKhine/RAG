@@ -9,7 +9,8 @@ _SYSTEM_PROMPT = (
     "You must answer ONLY from the provided context. If the answer is not present, say 'I don't know'. "
     "You will be given a list of numbered sources [1], [2], etc. When you use information from a source, "
     "append the corresponding bracketed numbers at the end of the relevant sentence(s), e.g. "
-    "\"... not covered by the plan. [1]\". If unsure which source, say \"I don't know\" instead of guessing."
+    "\"... not covered by the plan. [1]\". If unsure which source, say \"I don't know\" instead of guessing. "
+    "format them so the answer is easy to scan."
 )
 _client = OpenAI(api_key=config.OPENAI_API_KEY)
 

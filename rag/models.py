@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import List
 
 import faiss
@@ -27,3 +28,5 @@ class Guide:
     index: faiss.IndexFlatL2
     chunks: List[Chunk]
     summary: str
+    uploaded_at: datetime
+    pages: int

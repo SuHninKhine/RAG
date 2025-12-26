@@ -17,9 +17,10 @@ type ChatMessageItem = {
 type ChatPanelProps = {
   onOpenDocument: (source: SourceInfo, page?: number) => void;
   onResetDocument?: () => void;
+  selectedDocumentIds?: string[];
 };
 
-export default function ChatPanel({ onOpenDocument, onResetDocument }: ChatPanelProps) {
+export default function ChatPanel({ onOpenDocument, onResetDocument, selectedDocumentIds }: ChatPanelProps) {
   const linkifyCitations = (answer: string, sources: SourceInfo[] | undefined): string => {
     if (!sources || sources.length === 0) return answer;
     let output = answer;
@@ -85,7 +86,7 @@ export default function ChatPanel({ onOpenDocument, onResetDocument }: ChatPanel
     setError(null);
 
     try {
-      const response = await askQuestion(userMessage.content);
+      const response = await askQuestion(userMessage.content, selectedDocumentIds);
       const linkedAnswer = linkifyCitations(response.answer, response.sources);
       const assistantMessage: ChatMessageItem = {
         id: crypto.randomUUID(),

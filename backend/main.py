@@ -34,6 +34,16 @@ class QueryRequest(BaseModel):
     """Request body for the /query endpoint."""
 
     question: str
+    document_ids: Optional[List[str]] = None
+
+
+class DocumentInfo(BaseModel):
+    id: str
+    filename: str
+    pages: int
+    uploaded_at: str
+    summary: str
+    url: str
 
 
 class SourceInfo(BaseModel):
@@ -75,6 +85,25 @@ async def upload_guides(files: List[UploadFile] = File(...)) -> dict:
     }
 
 
+@app.get("/documents", response_model=List[DocumentInfo])
+async def list_documents() -> List[DocumentInfo]:
+    """List all uploaded documents with metadata."""
+
+    documents = []
+    for item in guide_manager.list_documents():
+        documents.append(
+            DocumentInfo(
+                id=item["id"],
+                filename=item["filename"],
+                pages=item["pages"],
+                uploaded_at=item["uploaded_at"],
+                summary=item["summary"],
+                url=f"/documents/{item['filename']}",
+            )
+        )
+    return documents
+
+
 @app.post("/query", response_model=QueryResponse)
 async def query(req: QueryRequest) -> QueryResponse:
     """Answer a user question using the loaded guides."""
@@ -83,7 +112,7 @@ async def query(req: QueryRequest) -> QueryResponse:
     if not question:
         raise HTTPException(status_code=400, detail="Question must not be empty.")
 
-    answer, sources = guide_manager.answer_question(question)
+    answer, sources = guide_manager.answer_question(question, document_ids=req.document_ids)
     source_models = []
     for src in sources:
         source_models.append(

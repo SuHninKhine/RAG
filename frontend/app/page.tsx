@@ -1,22 +1,49 @@
-﻿"use client";
+"use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { PanelLeft, PanelRight, PanelRightOpen } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 
 import Sidebar from "./components/sidebar";
 import ChatPanel from "./components/chatPanel";
 import DocumentViewerPanel from "./components/documentViewerPanel";
-import type { GuideInfo, SourceInfo } from "../lib/api";
+import type { SourceInfo } from "../lib/api";
 
 export default function HomePage() {
+  const searchParams = useSearchParams();
   const [showSidebar, setShowSidebar] = useState(true);
   const [showDocPanel, setShowDocPanel] = useState(true);
   const [docExpanded, setDocExpanded] = useState(false);
   const [docMeta, setDocMeta] = useState<{ filename?: string; page?: number; snippet?: string }>({});
-  const [guides, setGuides] = useState<GuideInfo[]>([]);
+  const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
   const [docWidth, setDocWidth] = useState<number>(380);
   const dragRaf = useRef<number | null>(null);
   const dragActive = useRef(false);
+
+  useEffect(() => {
+    const docsParam = searchParams.get("docs");
+    if (docsParam) {
+      const docs = docsParam
+        .split(",")
+        .map((d) => d.trim())
+        .filter(Boolean);
+      setSelectedDocumentIds(docs);
+      if (docs.length > 0) {
+        localStorage.setItem("doc_selection", docs.join(","));
+      }
+    } else {
+      const stored = localStorage.getItem("doc_selection");
+      if (stored) {
+        setSelectedDocumentIds(
+          stored
+            .split(",")
+            .map((d) => d.trim())
+            .filter(Boolean)
+        );
+      }
+    }
+  }, [searchParams]);
 
   const handleOpenDocument = (source: SourceInfo, page?: number) => {
     setDocMeta({
@@ -25,19 +52,6 @@ export default function HomePage() {
       snippet: source.snippet,
     });
     setShowDocPanel(true);
-  };
-
-  const handleGuidesUploaded = (newGuides: GuideInfo[]) => {
-    setGuides((prev) => {
-      const existing = new Set(prev.map((g) => g.filename));
-      const merged = [...prev];
-      for (const g of newGuides) {
-        if (!existing.has(g.filename)) {
-          merged.push(g);
-        }
-      }
-      return merged;
-    });
   };
 
   const handleResetDocument = () => {
@@ -84,11 +98,14 @@ export default function HomePage() {
     window.addEventListener("mouseup", handleUp);
   };
 
+  const contextLabel =
+    selectedDocumentIds.length > 0
+      ? `Asking across ${selectedDocumentIds.length} document${selectedDocumentIds.length > 1 ? "s" : ""}`
+      : "Auto-routing across all documents";
+
   return (
     <div className="flex h-screen overflow-hidden">
-      {showSidebar && (
-        <Sidebar guides={guides} onGuidesUploaded={handleGuidesUploaded} />
-      )}
+      {showSidebar && <Sidebar />}
 
       <div className="flex-1 flex flex-col">
         <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-200 bg-white/60 backdrop-blur-sm">
@@ -111,8 +128,25 @@ export default function HomePage() {
           </button>
         </div>
 
+        <div className="flex items-center gap-3 px-4 pt-3 text-xs text-neutral-600">
+          <span className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 py-1">
+            {contextLabel}
+          </span>
+          <Link
+            href="/documents"
+            className="text-[#3b7f5c] hover:text-[#2f654a] font-medium"
+            aria-label="Change documents"
+          >
+            Change documents
+          </Link>
+        </div>
+
         <div className="flex-1 flex overflow-hidden">
-          <ChatPanel onOpenDocument={handleOpenDocument} onResetDocument={handleResetDocument} />
+          <ChatPanel
+            onOpenDocument={handleOpenDocument}
+            onResetDocument={handleResetDocument}
+            selectedDocumentIds={selectedDocumentIds}
+          />
           {showDocPanel && (
             <>
               <div

@@ -3,8 +3,9 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import faiss
 import numpy as np
@@ -63,6 +64,8 @@ class GuideManager:
             index=index,
             chunks=chunks,
             summary=summary,
+            uploaded_at=datetime.now(),
+            pages=len(pages),
         )
         self.guides[filename] = guide
         self.build_root_index()
@@ -86,6 +89,23 @@ class GuideManager:
         self.root_index = faiss.IndexFlatL2(summary_vectors.shape[1])
         self.root_index.add(summary_vectors)
         self.root_index_items = [guide.filename for guide in self.guides.values()]
+
+    def list_documents(self) -> List[Dict[str, object]]:
+        """Return metadata for all loaded guides."""
+
+        documents: List[Dict[str, object]] = []
+        for guide in self.guides.values():
+            documents.append(
+                {
+                    "id": guide.filename,
+                    "filename": guide.filename,
+                    "filepath": guide.filepath,
+                    "pages": guide.pages,
+                    "uploaded_at": guide.uploaded_at.isoformat(),
+                    "summary": guide.summary,
+                }
+            )
+        return documents
 
     def route_query(self, question: str) -> List[Tuple[Guide, float]]:
         """Select the most relevant guides for a question."""
@@ -134,15 +154,26 @@ class GuideManager:
 
         return self._rerank_chunks(scored)
 
-    def answer_question(self, question: str) -> Tuple[str, List[Dict[str, object]]]:
+    def answer_question(
+        self, question: str, document_ids: Optional[List[str]] = None
+    ) -> Tuple[str, List[Dict[str, object]]]:
         """Answer a user question using the routed guides and chunk retrieval."""
 
-        routed_guides = self.route_query(question)
-        if not routed_guides:
+        guides_to_query: List[Guide] = []
+        if document_ids:
+            for doc_id in document_ids:
+                guide = self.guides.get(doc_id)
+                if guide:
+                    guides_to_query.append(guide)
+        else:
+            routed_guides = self.route_query(question)
+            guides_to_query = [guide for guide, _distance in routed_guides]
+
+        if not guides_to_query:
             return "I don't know", []
 
         all_scored: List[Tuple[Chunk, float]] = []
-        for guide, _distance in routed_guides:
+        for guide in guides_to_query:
             all_scored.extend(self.retrieve_chunks(guide.filename, question))
 
         all_scored.sort(key=lambda item: item[1])
@@ -153,11 +184,12 @@ class GuideManager:
         # Treat each retrieved chunk as its own source to make citations granular
         # and label context sections with the same ids shown to the LLM.
         source_entries: List[Dict[str, object]] = []
-        seen_chunks: set[int] = set()
+        seen_chunks: set[tuple[str, int]] = set()
         for chunk, _ in all_scored:
-            if chunk.chunk_id in seen_chunks:
+            chunk_key = (chunk.source, chunk.chunk_id)
+            if chunk_key in seen_chunks:
                 continue
-            seen_chunks.add(chunk.chunk_id)
+            seen_chunks.add(chunk_key)
             source_entries.append(
                 {
                     "id": len(source_entries) + 1,

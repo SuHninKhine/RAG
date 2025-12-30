@@ -8,7 +8,8 @@ import { useSearchParams } from "next/navigation";
 import Sidebar from "./components/sidebar";
 import ChatPanel from "./components/chatPanel";
 import DocumentViewerPanel from "./components/documentViewerPanel";
-import type { SourceInfo } from "../lib/api";
+import type { Label, SourceInfo } from "../lib/api";
+import { listLabels } from "../lib/api";
 
 export default function HomePage() {
   const searchParams = useSearchParams();
@@ -17,12 +18,15 @@ export default function HomePage() {
   const [docExpanded, setDocExpanded] = useState(false);
   const [docMeta, setDocMeta] = useState<{ filename?: string; page?: number; snippet?: string }>({});
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
+  const [labels, setLabels] = useState<Label[]>([]);
+  const [activeLabelId, setActiveLabelId] = useState<string | "all">("all");
   const [docWidth, setDocWidth] = useState<number>(380);
   const dragRaf = useRef<number | null>(null);
   const dragActive = useRef(false);
 
   useEffect(() => {
     const docsParam = searchParams.get("docs");
+    const labelParam = searchParams.get("label");
     if (docsParam) {
       const docs = docsParam
         .split(",")
@@ -43,7 +47,25 @@ export default function HomePage() {
         );
       }
     }
+    if (labelParam) {
+      setActiveLabelId(labelParam);
+    }
   }, [searchParams]);
+
+  useEffect(() => {
+    const loadLabels = async () => {
+      try {
+        const data = await listLabels();
+        setLabels(data);
+        if (activeLabelId !== "all" && !data.find((l) => l.id === activeLabelId)) {
+          setActiveLabelId("all");
+        }
+      } catch (err) {
+        console.error("Failed to load labels", err);
+      }
+    };
+    loadLabels();
+  }, [activeLabelId]);
 
   const handleOpenDocument = (source: SourceInfo, page?: number) => {
     setDocMeta({
@@ -99,9 +121,18 @@ export default function HomePage() {
   };
 
   const contextLabel =
-    selectedDocumentIds.length > 0
-      ? `Asking across ${selectedDocumentIds.length} document${selectedDocumentIds.length > 1 ? "s" : ""}`
-      : "Auto-routing across all documents";
+    activeLabelId !== "all"
+      ? `Label: ${labels.find((l) => l.id === activeLabelId)?.name ?? "Unknown"} (${labels.find((l) => l.id === activeLabelId)?.document_ids.length ?? 0} documents)`
+      : selectedDocumentIds.length > 0
+        ? `Asking across ${selectedDocumentIds.length} document${selectedDocumentIds.length > 1 ? "s" : ""}`
+        : "Label: All documents (auto)";
+
+  const chatSessionKey =
+    activeLabelId !== "all"
+      ? `label-${activeLabelId}`
+      : selectedDocumentIds.length > 0
+        ? `docs-${selectedDocumentIds.join(",")}`
+        : "all-docs";
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -132,20 +163,40 @@ export default function HomePage() {
           <span className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 py-1">
             {contextLabel}
           </span>
-          <Link
-            href="/documents"
-            className="text-[#3b7f5c] hover:text-[#2f654a] font-medium"
-            aria-label="Change documents"
-          >
-            Change documents
-          </Link>
+          <div className="flex items-center gap-2 text-sm">
+            <label className="text-neutral-700 text-xs">Label</label>
+            <select
+              className="border border-neutral-200 rounded-md bg-white px-2 py-1 text-sm text-neutral-800"
+              value={activeLabelId}
+              onChange={(e) => {
+                setActiveLabelId(e.target.value as string | "all");
+                setSelectedDocumentIds([]);
+              }}
+            >
+              <option value="all">All documents (auto)</option>
+              {labels.map((label) => (
+                <option key={label.id} value={label.id}>
+                  {label.name} ({label.document_ids.length})
+                </option>
+              ))}
+            </select>
+            <Link
+              href="/documents"
+              className="text-[#3b7f5c] hover:text-[#2f654a] font-medium text-xs"
+              aria-label="Manage labels and documents"
+            >
+              Manage documents & labels
+            </Link>
+          </div>
         </div>
 
         <div className="flex-1 flex overflow-hidden">
           <ChatPanel
+            key={chatSessionKey}
             onOpenDocument={handleOpenDocument}
             onResetDocument={handleResetDocument}
             selectedDocumentIds={selectedDocumentIds}
+            labelId={activeLabelId !== "all" ? activeLabelId : undefined}
           />
           {showDocPanel && (
             <>

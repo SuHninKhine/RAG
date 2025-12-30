@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import List, Optional
+from uuid import uuid4
+from datetime import datetime
 
 from fastapi import File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,6 +30,7 @@ app.add_middleware(
 )
 
 guide_manager = GuideManager()
+labels_store: dict[str, dict[str, object]] = {}
 
 
 class QueryRequest(BaseModel):
@@ -35,6 +38,17 @@ class QueryRequest(BaseModel):
 
     question: str
     document_ids: Optional[List[str]] = None
+    label_id: Optional[str] = None
+
+
+class LabelBase(BaseModel):
+    name: str
+    document_ids: List[str] = []
+
+
+class Label(LabelBase):
+    id: str
+    created_at: str
 
 
 class DocumentInfo(BaseModel):
@@ -104,6 +118,51 @@ async def list_documents() -> List[DocumentInfo]:
     return documents
 
 
+@app.get("/labels", response_model=List[Label])
+async def list_labels() -> List[Label]:
+    """List all labels."""
+
+    return [Label(**item) for item in labels_store.values()]
+
+
+@app.post("/labels", response_model=Label)
+async def create_label(payload: LabelBase) -> Label:
+    """Create a new label with an optional set of document IDs."""
+
+    label_id = str(uuid4())
+    item = {
+        "id": label_id,
+        "name": payload.name.strip(),
+        "document_ids": list(payload.document_ids),
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    labels_store[label_id] = item
+    return Label(**item)
+
+
+@app.put("/labels/{label_id}", response_model=Label)
+async def update_label(label_id: str, payload: LabelBase) -> Label:
+    """Update label name and document membership."""
+
+    if label_id not in labels_store:
+        raise HTTPException(status_code=404, detail="Label not found.")
+    item = labels_store[label_id]
+    item["name"] = payload.name.strip()
+    item["document_ids"] = list(payload.document_ids)
+    labels_store[label_id] = item
+    return Label(**item)
+
+
+@app.delete("/labels/{label_id}")
+async def delete_label(label_id: str) -> dict:
+    """Delete a label."""
+
+    if label_id not in labels_store:
+        raise HTTPException(status_code=404, detail="Label not found.")
+    labels_store.pop(label_id, None)
+    return {"status": "ok"}
+
+
 @app.post("/query", response_model=QueryResponse)
 async def query(req: QueryRequest) -> QueryResponse:
     """Answer a user question using the loaded guides."""
@@ -112,7 +171,14 @@ async def query(req: QueryRequest) -> QueryResponse:
     if not question:
         raise HTTPException(status_code=400, detail="Question must not be empty.")
 
-    answer, sources = guide_manager.answer_question(question, document_ids=req.document_ids)
+    document_ids = req.document_ids
+    if req.label_id:
+        label = labels_store.get(req.label_id)
+        if not label:
+            raise HTTPException(status_code=404, detail="Label not found.")
+        document_ids = label.get("document_ids", [])
+
+    answer, sources = guide_manager.answer_question(question, document_ids=document_ids)
     source_models = []
     for src in sources:
         source_models.append(
@@ -142,3 +208,16 @@ async def get_document(filename: str):
         media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="{safe_name}"'},
     )
+
+
+@app.delete("/documents/{filename}")
+async def delete_document(filename: str) -> dict:
+    """Delete a document and remove it from indexes and labels."""
+
+    safe_name = Path(filename).name
+    removed = guide_manager.remove_guide(safe_name)
+    if not removed:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    for label in labels_store.values():
+        label["document_ids"] = [doc for doc in label.get("document_ids", []) if doc != safe_name]
+    return {"status": "ok", "message": f"Deleted {safe_name}"}

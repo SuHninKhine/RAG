@@ -239,3 +239,18 @@ class GuideManager:
         """Placeholder for index persistence; currently a no-op."""
 
         config.logger.debug("Index persistence not enabled; skipping save.")
+
+    def remove_guide(self, filename: str) -> bool:
+        """Remove a guide and rebuild routing indexes."""
+
+        if filename not in self.guides:
+            return False
+        self.guides.pop(filename, None)
+        try:
+            path = Path(config.DOCUMENTS_DIR, filename)
+            if path.exists():
+                path.unlink()
+        except Exception:
+            config.logger.warning("Failed to delete document file: %s", filename)
+        self.build_root_index()
+        return True

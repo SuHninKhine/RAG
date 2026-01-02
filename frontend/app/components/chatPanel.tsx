@@ -1,11 +1,11 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { SendHorizontal } from "lucide-react";
+import { BookmarkPlus, SendHorizontal } from "lucide-react";
 
 import ChatMessage from "./chatMessage";
 import type { SourceInfo } from "../../lib/api";
-import { askQuestion } from "../../lib/api";
+import { askQuestion, saveNotebookEntry } from "../../lib/api";
 
 type ChatMessageItem = {
   id: string;
@@ -28,10 +28,8 @@ export default function ChatPanel({ onOpenDocument, onResetDocument, selectedDoc
     for (const { id } of sources) {
       const cid = Number(id);
       if (Number.isNaN(cid)) continue;
-      // Replace bracketed citations like [1]
       const bracketRe = new RegExp(`\\[${cid}\\]`, "g");
       output = output.replace(bracketRe, `[${cid}](citation://${cid})`);
-      // Replace bare numbers at boundaries (start or whitespace) followed by non-digit
       const bareRe = new RegExp(`(^|\\s)${cid}(?=[^\\d]|$)`, "g");
       output = output.replace(bareRe, `$1[${cid}](citation://${cid})`);
     }
@@ -57,9 +55,11 @@ export default function ChatPanel({ onOpenDocument, onResetDocument, selectedDoc
   );
 
   const [messages, setMessages] = useState<ChatMessageItem[]>(initialMessages);
+  const [lastQuestion, setLastQuestion] = useState<string>("");
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savingId, setSavingId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -82,6 +82,7 @@ export default function ChatPanel({ onOpenDocument, onResetDocument, selectedDoc
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    setLastQuestion(input);
     setInput("");
     setLoading(true);
     setError(null);
@@ -100,6 +101,24 @@ export default function ChatPanel({ onOpenDocument, onResetDocument, selectedDoc
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSave = async (msg: ChatMessageItem) => {
+    if (!lastQuestion || msg.role !== "assistant") return;
+    setSavingId(msg.id);
+    try {
+      await saveNotebookEntry({
+        question: lastQuestion,
+        answer: msg.content,
+        labelId: labelId,
+        documentIds: selectedDocumentIds,
+        sources: msg.sources,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save to notebook.");
+    } finally {
+      setSavingId(null);
     }
   };
 
@@ -141,20 +160,33 @@ export default function ChatPanel({ onOpenDocument, onResetDocument, selectedDoc
                       : undefined
                   }
                 />
-                {msg.role === "assistant" && msg.sources && msg.sources.length > 0 && (
+                {msg.role === "assistant" && (
                   <div className="mt-2 text-xs text-neutral-500 flex flex-wrap items-center gap-2">
-                    <span className="uppercase tracking-wide text-[10px] text-neutral-400">Sources</span>
-                    {msg.sources.map((src) => (
-                      <button
-                        key={src.id}
-                        type="button"
-                        className="inline-flex items-center justify-center rounded-full border border-neutral-300 px-2 py-0.5 text-[11px] font-medium text-neutral-700 hover:bg-neutral-100"
-                        onClick={() => onOpenDocument(src, src.primaryPage ?? src.pages?.[0])}
-                        title={`${src.filename}${src.primaryPage ?? src.pages?.[0] ? ` · p${src.primaryPage ?? src.pages?.[0]}` : ""}`}
-                      >
-                        [{src.id}]
-                      </button>
-                    ))}
+                    {msg.sources && msg.sources.length > 0 && (
+                      <>
+                        <span className="uppercase tracking-wide text-[10px] text-neutral-400">Sources</span>
+                        {msg.sources.map((src) => (
+                          <button
+                            key={src.id}
+                            type="button"
+                            className="inline-flex items-center justify-center rounded-full border border-neutral-300 px-2 py-0.5 text-[11px] font-medium text-neutral-700 hover:bg-neutral-100"
+                            onClick={() => onOpenDocument(src, src.primaryPage ?? src.pages?.[0])}
+                            title={`${src.filename}${src.primaryPage ?? src.pages?.[0] ? ` p${src.primaryPage ?? src.pages?.[0]}` : ""}`}
+                          >
+                            [{src.id}]
+                          </button>
+                        ))}
+                      </>
+                    )}
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 rounded-full border border-neutral-300 px-2 py-0.5 text-[11px] font-medium text-neutral-700 hover:bg-neutral-100"
+                      onClick={() => handleSave(msg)}
+                      disabled={savingId === msg.id}
+                    >
+                      <BookmarkPlus className="h-3.5 w-3.5" />
+                      {savingId === msg.id ? "Saving..." : "Save to notebook"}
+                    </button>
                   </div>
                 )}
               </div>

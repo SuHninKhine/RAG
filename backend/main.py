@@ -31,6 +31,7 @@ app.add_middleware(
 
 guide_manager = GuideManager()
 labels_store: dict[str, dict[str, object]] = {}
+notebook_store: dict[str, dict[str, object]] = {}
 
 
 class QueryRequest(BaseModel):
@@ -47,6 +48,19 @@ class LabelBase(BaseModel):
 
 
 class Label(LabelBase):
+    id: str
+    created_at: str
+
+
+class NotebookEntryBase(BaseModel):
+    question: str
+    answer: str
+    label_id: Optional[str] = None
+    document_ids: Optional[List[str]] = None
+    sources: Optional[List[dict]] = None
+
+
+class NotebookEntry(NotebookEntryBase):
     id: str
     created_at: str
 
@@ -160,6 +174,43 @@ async def delete_label(label_id: str) -> dict:
     if label_id not in labels_store:
         raise HTTPException(status_code=404, detail="Label not found.")
     labels_store.pop(label_id, None)
+    return {"status": "ok"}
+
+
+@app.get("/notebook", response_model=List[NotebookEntry])
+async def list_notebook() -> List[NotebookEntry]:
+    """List saved notebook entries."""
+
+    # Return newest first
+    entries = sorted(notebook_store.values(), key=lambda x: x["created_at"], reverse=True)
+    return [NotebookEntry(**item) for item in entries]
+
+
+@app.post("/notebook", response_model=NotebookEntry)
+async def create_notebook_entry(payload: NotebookEntryBase) -> NotebookEntry:
+    """Save a QA pair to the notebook."""
+
+    entry_id = str(uuid4())
+    item = {
+        "id": entry_id,
+        "question": payload.question.strip(),
+        "answer": payload.answer.strip(),
+        "label_id": payload.label_id,
+        "document_ids": payload.document_ids or [],
+        "sources": payload.sources or [],
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    notebook_store[entry_id] = item
+    return NotebookEntry(**item)
+
+
+@app.delete("/notebook/{entry_id}")
+async def delete_notebook_entry(entry_id: str) -> dict:
+    """Delete a notebook entry."""
+
+    if entry_id not in notebook_store:
+        raise HTTPException(status_code=404, detail="Notebook entry not found.")
+    notebook_store.pop(entry_id, None)
     return {"status": "ok"}
 
 

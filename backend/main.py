@@ -85,6 +85,7 @@ class SourceInfo(BaseModel):
 
 class QueryResponse(BaseModel):
     answer: str
+    citations: List[dict]
     sources: List[SourceInfo]
 
 
@@ -229,7 +230,7 @@ async def query(req: QueryRequest) -> QueryResponse:
             raise HTTPException(status_code=404, detail="Label not found.")
         document_ids = label.get("document_ids", [])
 
-    answer, sources = guide_manager.answer_question(question, document_ids=document_ids)
+    answer, sources, citations = guide_manager.answer_question(question, document_ids=document_ids)
     source_models = []
     for src in sources:
         source_models.append(
@@ -242,7 +243,7 @@ async def query(req: QueryRequest) -> QueryResponse:
                 primary_page=src.get("primary_page"),
             )
         )
-    return QueryResponse(answer=answer, sources=source_models)
+    return QueryResponse(answer=answer, citations=citations, sources=source_models)
 
 
 @app.get("/documents/{filename}")

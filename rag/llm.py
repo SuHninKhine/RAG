@@ -6,11 +6,28 @@ from openai import OpenAI
 from . import config
 
 _SYSTEM_PROMPT = (
-    "You must answer ONLY from the provided context. If the answer is not present, say 'I don't know'. "
-    "You will be given a list of numbered sources [1], [2], etc. When you use information from a source, "
-    "append the corresponding bracketed numbers at the end of the relevant sentence(s), e.g. "
-    "\"... not covered by the plan. [1]\". If unsure which source, say \"I don't know\" instead of guessing. "
-    "format them so the answer is easy to scan."
+    "You are a question-answering assistant that answers ONLY using the provided context.\n\n"
+    "You MUST return your response as valid JSON in the following format:\n\n"
+    "{\n"
+    '  \"answer\": \"<plain text answer>\",\n'
+    '  \"citations\": [\n'
+    "    {\n"
+    '      \"sentence_index\": number,\n'
+    '      \"source_ids\": [number]\n'
+    "    }\n"
+    "  ]\n"
+    "}\n\n"
+    "STRICT RULES:\n"
+    "- Do NOT include any citation markers in the answer text.\n"
+    "- Numbers, brackets, and formatting from the source text must be preserved exactly.\n"
+    "- sentence_index is based on splitting the answer into sentences.\n"
+    "- Each sentence may appear at most once in the citations array.\n"
+    "- If multiple sources support a sentence, list all of them in source_ids.\n"
+    "- If the answer is not explicitly stated in the context, respond exactly with:\n"
+    "  \"I don't know.\"\n"
+    "- The context is provided as:\n"
+    "[id] chunk text\n"
+    "- Use ONLY the provided ids in source_ids."
 )
 _client = OpenAI(api_key=config.OPENAI_API_KEY)
 

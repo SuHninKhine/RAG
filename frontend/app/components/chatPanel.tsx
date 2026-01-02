@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { BookmarkPlus, SendHorizontal } from "lucide-react";
 
 import ChatMessage from "./chatMessage";
-import type { SourceInfo } from "../../lib/api";
+import type { Citation, SourceInfo } from "../../lib/api";
 import { askQuestion, saveNotebookEntry } from "../../lib/api";
 
 type ChatMessageItem = {
@@ -12,6 +12,7 @@ type ChatMessageItem = {
   role: "user" | "assistant";
   content: string;
   sources?: SourceInfo[];
+  citations?: Citation[];
 };
 
 type ChatPanelProps = {
@@ -22,20 +23,6 @@ type ChatPanelProps = {
 };
 
 export default function ChatPanel({ onOpenDocument, onResetDocument, selectedDocumentIds, labelId }: ChatPanelProps) {
-  const linkifyCitations = (answer: string, sources: SourceInfo[] | undefined): string => {
-    if (!sources || sources.length === 0) return answer;
-    let output = answer;
-    for (const { id } of sources) {
-      const cid = Number(id);
-      if (Number.isNaN(cid)) continue;
-      const bracketRe = new RegExp(`\\[${cid}\\]`, "g");
-      output = output.replace(bracketRe, `[${cid}](citation://${cid})`);
-      const bareRe = new RegExp(`(^|\\s)${cid}(?=[^\\d]|$)`, "g");
-      output = output.replace(bareRe, `$1[${cid}](citation://${cid})`);
-    }
-    return output;
-  };
-
   const initialMessages = useMemo<ChatMessageItem[]>(
     () => [
       {
@@ -46,9 +33,9 @@ export default function ChatPanel({ onOpenDocument, onResetDocument, selectedDoc
       {
         id: "2",
         role: "assistant",
-        content:
-          "The document states that adult dental care is generally not covered by the plan. [1]\n\n_Pages: 5_",
+        content: "The document states that adult dental care is generally not covered by the plan.",
         sources: [{ id: 1, filename: "BenefitsSummary.pdf", pages: [5], url: "/documents/BenefitsSummary.pdf" }],
+        citations: [{ sentence_index: 0, source_ids: [1] }],
       },
     ],
     []
@@ -89,12 +76,12 @@ export default function ChatPanel({ onOpenDocument, onResetDocument, selectedDoc
 
     try {
       const response = await askQuestion(userMessage.content, selectedDocumentIds, labelId);
-      const linkedAnswer = linkifyCitations(response.answer, response.sources);
       const assistantMessage: ChatMessageItem = {
         id: crypto.randomUUID(),
         role: "assistant",
-        content: linkedAnswer,
+        content: response.answer,
         sources: response.sources,
+        citations: response.citations,
       };
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (err) {
@@ -139,6 +126,7 @@ export default function ChatPanel({ onOpenDocument, onResetDocument, selectedDoc
                 <ChatMessage
                   role={msg.role}
                   content={msg.content}
+                  citations={msg.citations}
                   onCitationClick={
                     msg.role === "assistant"
                       ? (id) => {
@@ -162,22 +150,6 @@ export default function ChatPanel({ onOpenDocument, onResetDocument, selectedDoc
                 />
                 {msg.role === "assistant" && (
                   <div className="mt-2 text-xs text-neutral-500 flex flex-wrap items-center gap-2">
-                    {msg.sources && msg.sources.length > 0 && (
-                      <>
-                        <span className="uppercase tracking-wide text-[10px] text-neutral-400">Sources</span>
-                        {msg.sources.map((src) => (
-                          <button
-                            key={src.id}
-                            type="button"
-                            className="inline-flex items-center justify-center rounded-full border border-neutral-300 px-2 py-0.5 text-[11px] font-medium text-neutral-700 hover:bg-neutral-100"
-                            onClick={() => onOpenDocument(src, src.primaryPage ?? src.pages?.[0])}
-                            title={`${src.filename}${src.primaryPage ?? src.pages?.[0] ? ` p${src.primaryPage ?? src.pages?.[0]}` : ""}`}
-                          >
-                            [{src.id}]
-                          </button>
-                        ))}
-                      </>
-                    )}
                     <button
                       type="button"
                       className="inline-flex items-center gap-1 rounded-full border border-neutral-300 px-2 py-0.5 text-[11px] font-medium text-neutral-700 hover:bg-neutral-100"

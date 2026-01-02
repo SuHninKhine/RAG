@@ -6,6 +6,7 @@ from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+import json
 
 import faiss
 import numpy as np
@@ -156,7 +157,7 @@ class GuideManager:
 
     def answer_question(
         self, question: str, document_ids: Optional[List[str]] = None
-    ) -> Tuple[str, List[Dict[str, object]]]:
+    ) -> Tuple[str, List[Dict[str, object]], List[Dict[str, object]]]:
         """Answer a user question using the routed guides and chunk retrieval."""
 
         guides_to_query: List[Guide] = []
@@ -170,7 +171,7 @@ class GuideManager:
             guides_to_query = [guide for guide, _distance in routed_guides]
 
         if not guides_to_query:
-            return "I don't know", []
+            return "I don't know", [], []
 
         all_scored: List[Tuple[Chunk, float]] = []
         for guide in guides_to_query:
@@ -226,9 +227,29 @@ class GuideManager:
             for entry in source_entries
         ]
 
-        answer = call_llm(merged_context, question)
+        raw_answer = call_llm(merged_context, question)
+        if raw_answer.strip() == "I don't know.":
+            return "I don't know.", source_list, []
 
-        return answer, source_list
+        answer_text = ""
+        citations: List[Dict[str, object]] = []
+        try:
+            parsed = json.loads(raw_answer)
+            answer_text = str(parsed.get("answer", "")).strip()
+            citations_raw = parsed.get("citations") or []
+            valid_ids = {entry["id"] for entry in source_entries}
+            for item in citations_raw:
+                try:
+                    sentence_index = int(item.get("sentence_index"))
+                    source_ids = [int(sid) for sid in item.get("source_ids", []) if int(sid) in valid_ids]
+                    if source_ids:
+                        citations.append({"sentence_index": sentence_index, "source_ids": source_ids})
+                except Exception:
+                    continue
+        except Exception:
+            answer_text = raw_answer.strip()
+
+        return answer_text, source_list, citations
 
     def _rerank_chunks(self, scored: List[Tuple[Chunk, float]]) -> List[Tuple[Chunk, float]]:
         """Hook for future reranking; currently preserves FAISS order."""

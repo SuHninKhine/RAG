@@ -1,32 +1,27 @@
-﻿"use client";
-
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+"use client";
 
 export type ChatMessageProps = {
   role: "user" | "assistant";
   content: string;
+  citations?: { sentence_index: number; source_ids: number[] }[];
   onCitationClick?: (id: number) => void;
   getCitationMeta?: (id: number) => { filename?: string; page?: number } | undefined;
 };
 
-export default function ChatMessage({ role, content, onCitationClick, getCitationMeta }: ChatMessageProps) {
-  const isUser = role === "user";
+const splitSentences = (text: string): string[] =>
+  text
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
 
-  const handleBubbleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const target = e.target as HTMLElement | null;
-    if (!target) return;
-    const link = target.closest("a") as HTMLAnchorElement | null;
-    if (!link || !link.href) return;
-    if (link.href.startsWith("citation://")) {
-      e.preventDefault();
-      const idStr = link.href.replace("citation://", "");
-      const id = Number(idStr);
-      if (onCitationClick && !Number.isNaN(id)) {
-        onCitationClick(id);
-      }
-    }
-  };
+export default function ChatMessage({
+  role,
+  content,
+  citations,
+  onCitationClick,
+  getCitationMeta,
+}: ChatMessageProps) {
+  const isUser = role === "user";
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
@@ -36,68 +31,39 @@ export default function ChatMessage({ role, content, onCitationClick, getCitatio
         </div>
         <div
           className={`${
-            isUser
-              ? "bg-neutral-100 text-neutral-900"
-              : "bg-white border border-neutral-200 text-neutral-900"
+            isUser ? "bg-neutral-100 text-neutral-900" : "bg-white border border-neutral-200 text-neutral-900"
           } rounded-lg px-4 py-3 text-sm`}
-          onClick={isUser ? undefined : handleBubbleClick}
         >
           {isUser ? (
             <span>{content}</span>
           ) : (
-            <ReactMarkdown
-              className="prose prose-neutral max-w-none text-sm"
-              remarkPlugins={[remarkGfm]}
-              components={{
-                a: ({ href, children }) => {
-                  const text = Array.isArray(children)
-                    ? children.map((c: any) => (typeof c === "string" ? c : "")).join("")
-                    : (children as any as string) ?? "";
-                  const citationMatch = text.match(/\d+/);
-                  if (onCitationClick && citationMatch) {
-                    const id = Number(citationMatch[0]);
-                    const meta = getCitationMeta ? getCitationMeta(id) : undefined;
-                    const title =
-                      meta && meta.filename
-                        ? `${meta.filename}${meta.page ? ` · p${meta.page}` : ""}`
-                        : undefined;
-                    const handleClick = () => {
-                      if (!Number.isNaN(id)) {
-                        onCitationClick(id);
-                      }
-                    };
-                    return (
-                      <button
-                        type="button"
-                        onClick={handleClick}
-                        className="inline-flex items-center justify-center rounded-full border border-neutral-300 px-1.5 py-0.5 text-[11px] font-medium text-neutral-700 hover:bg-neutral-100"
-                        title={title}
-                      >
-                        [{id}]
-                      </button>
-                    );
-                  }
-                  const handleExternal = (e: React.MouseEvent<HTMLAnchorElement>) => {
-                    e.preventDefault();
-                    if (href) {
-                      window.open(href, "_blank");
-                    }
-                  };
-                  return (
-                    <a
-                      href={href}
-                      onClick={handleExternal}
-                      className="underline text-blue-600 hover:text-blue-700"
-                      rel="noreferrer"
-                    >
-                      {children}
-                    </a>
-                  );
-                },
-              }}
-            >
-              {content}
-            </ReactMarkdown>
+            <div className="prose prose-neutral max-w-none text-sm">
+              {splitSentences(content).map((sentence, idx) => {
+                const citation = (citations || []).find((c) => c.sentence_index === idx);
+                return (
+                  <span key={idx} className="inline-block mb-1">
+                    {sentence}
+                    {citation &&
+                      citation.source_ids.map((sid) => {
+                        const meta = getCitationMeta ? getCitationMeta(sid) : undefined;
+                        const title =
+                          meta && meta.filename ? `${meta.filename}${meta.page ? ` p${meta.page}` : ""}` : undefined;
+                        return (
+                          <button
+                            key={sid}
+                            type="button"
+                            className="ml-1 align-super inline-flex items-center justify-center rounded-full border border-neutral-300 px-1.5 py-0.5 text-[11px] font-medium text-neutral-700 hover:bg-neutral-100"
+                            onClick={() => onCitationClick && onCitationClick(sid)}
+                            title={title}
+                          >
+                            [{sid}]
+                          </button>
+                        );
+                      })}
+                  </span>
+                );
+              })}
+            </div>
           )}
         </div>
       </div>

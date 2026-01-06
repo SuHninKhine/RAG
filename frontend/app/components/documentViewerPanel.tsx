@@ -1,5 +1,6 @@
 ﻿"use client";
 
+import { useEffect, useState } from "react";
 import { X, Maximize2, Minimize2 } from "lucide-react";
 import { BACKEND_URL } from "../../lib/api";
 
@@ -22,7 +23,11 @@ export default function DocumentViewerPanel({
   width,
   onClose,
 }: DocumentViewerPanelProps) {
+  const [textContent, setTextContent] = useState<string | null>(null);
+  const [loadingText, setLoadingText] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const fileUrl = filename ? `${BACKEND_URL}/documents/${encodeURIComponent(filename)}` : null;
+  const isPdf = filename ? filename.toLowerCase().endsWith(".pdf") : false;
   const pageNumber = page ?? 1;
   const rawSearch = snippet ? snippet.replace(/\s+/g, " ").trim().slice(0, 80) : "";
   const searchTerm = rawSearch ? encodeURIComponent(rawSearch) : "";
@@ -36,6 +41,31 @@ export default function DocumentViewerPanel({
   const usePdfjs = process.env.NEXT_PUBLIC_USE_PDFJS === "true";
   const viewerUrl = usePdfjs ? pdfjsUrl ?? fallbackUrl : fallbackUrl;
   const displayPage = page ?? undefined;
+
+  useEffect(() => {
+    if (!filename || isPdf) {
+      setTextContent(null);
+      setError(null);
+      return;
+    }
+    const loadText = async () => {
+      setLoadingText(true);
+      setError(null);
+      try {
+        const res = await fetch(`${BACKEND_URL}/documents/${encodeURIComponent(filename)}/text`);
+        if (!res.ok) {
+          throw new Error(`Failed to load text (${res.status})`);
+        }
+        const json = await res.json();
+        setTextContent(json.text ?? "");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load document text.");
+      } finally {
+        setLoadingText(false);
+      }
+    };
+    loadText();
+  }, [filename, isPdf]);
 
   return (
     <aside
@@ -85,17 +115,26 @@ export default function DocumentViewerPanel({
             <div className="mt-1 line-clamp-3">{snippet}</div>
           </div>
         )}
-        {viewerUrl ? (
-          <iframe
-            key={`${filename ?? "doc"}-${page ?? 1}`}
-            src={viewerUrl}
-            className="w-full flex-1 border-0"
-            title={filename ?? "Document viewer"}
-          />
+        {isPdf ? (
+          viewerUrl ? (
+            <iframe
+              key={`${filename ?? "doc"}-${page ?? 1}`}
+              src={viewerUrl}
+              className="w-full flex-1 border-0"
+              title={filename ?? "Document viewer"}
+            />
+          ) : (
+            <div className="text-center text-neutral-600 space-y-1">
+              <p className="text-sm font-medium">No document opened yet.</p>
+              <p className="text-sm">Click a source like [1] in an answer to open it here.</p>
+            </div>
+          )
         ) : (
-          <div className="text-center text-neutral-600 space-y-1">
-            <p className="text-sm font-medium">No document opened yet.</p>
-            <p className="text-sm">Click a source like [1] in an answer to open it here.</p>
+          <div className="flex-1 overflow-auto border border-neutral-200 rounded-md p-3 text-sm text-neutral-800 bg-neutral-50 whitespace-pre-wrap">
+            {loadingText && <div className="text-xs text-neutral-500">Loading text...</div>}
+            {error && <div className="text-xs text-rose-600">{error}</div>}
+            {!loadingText && !error && textContent && <div>{textContent}</div>}
+            {!loadingText && !error && !textContent && <div className="text-xs text-neutral-500">No text available.</div>}
           </div>
         )}
       </div>

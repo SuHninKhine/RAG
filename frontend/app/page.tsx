@@ -9,7 +9,7 @@ import Sidebar from "./components/sidebar";
 import ChatPanel from "./components/chatPanel";
 import DocumentViewerPanel from "./components/documentViewerPanel";
 import type { Label, SourceInfo } from "../lib/api";
-import { listLabels } from "../lib/api";
+import { listDocuments, listLabels } from "../lib/api";
 
 export default function HomePage() {
   const searchParams = useSearchParams();
@@ -51,6 +51,29 @@ export default function HomePage() {
       setActiveLabelId(labelParam);
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    const reconcileSelection = async () => {
+      try {
+        const docs = await listDocuments();
+        const existing = new Set(docs.map((d) => d.filename));
+        setSelectedDocumentIds((prev) => {
+          const next = prev.filter((id) => existing.has(id));
+          if (next.length !== prev.length) {
+            if (next.length > 0) {
+              localStorage.setItem("doc_selection", next.join(","));
+            } else {
+              localStorage.removeItem("doc_selection");
+            }
+          }
+          return next;
+        });
+      } catch (err) {
+        console.error("Failed to reconcile document selection", err);
+      }
+    };
+    reconcileSelection();
+  }, []);
 
   useEffect(() => {
     const loadLabels = async () => {
@@ -125,7 +148,7 @@ export default function HomePage() {
       ? `Label: ${labels.find((l) => l.id === activeLabelId)?.name ?? "Unknown"} (${labels.find((l) => l.id === activeLabelId)?.document_ids.length ?? 0} documents)`
       : selectedDocumentIds.length > 0
         ? `Asking across ${selectedDocumentIds.length} document${selectedDocumentIds.length > 1 ? "s" : ""}`
-        : "Label: All documents (auto)";
+        : "Please choose document to ask";
 
   const chatSessionKey =
     activeLabelId !== "all"
@@ -180,13 +203,13 @@ export default function HomePage() {
                 </option>
               ))}
             </select>
-            <Link
-              href="/documents"
-              className="text-[#3b7f5c] hover:text-[#2f654a] font-medium text-xs"
-              aria-label="Manage labels and documents"
-            >
-              Manage documents & labels
-            </Link>
+          <Link
+            href="/documents"
+            className="text-[#1f3a8a] hover:text-[#152b66] font-medium text-xs"
+            aria-label="Manage labels and documents"
+          >
+            Manage documents & labels
+          </Link>
           </div>
         </div>
 

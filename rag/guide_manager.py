@@ -12,7 +12,7 @@ import faiss
 import numpy as np
 
 from . import config
-from .chunker import chunk_text, extract_pages_from_pdf_bytes
+from .chunker import chunk_text, extract_pages_from_bytes
 from .embeddings import embed_texts
 from .llm import call_llm
 from .models import Chunk, Guide
@@ -27,7 +27,7 @@ class GuideManager:
         self.root_index_items: List[str] = []
 
     def add_pdf(self, filename: str, data: bytes) -> str:
-        """Ingest a PDF, build its chunk index, and register the guide.
+        """Ingest a document, build its chunk index, and register the guide.
 
         Args:
             filename: Name to assign to the PDF on disk.
@@ -40,7 +40,8 @@ class GuideManager:
         path = Path(config.DOCUMENTS_DIR, filename)
         path.write_bytes(data)
 
-        pages = extract_pages_from_pdf_bytes(data)
+        pages_with_type = extract_pages_from_bytes(filename, data)
+        pages = [(page, text) for page, text, _stype in pages_with_type]
         chunks = chunk_text(pages)
         if not chunks:
             raise ValueError(f"No extractable text found in {filename}")
@@ -191,15 +192,16 @@ class GuideManager:
             if chunk_key in seen_chunks:
                 continue
             seen_chunks.add(chunk_key)
+            is_pdf = str(chunk.source).lower().endswith(".pdf")
             source_entries.append(
                 {
                     "id": len(source_entries) + 1,
                     "chunk": chunk,
                     "filename": chunk.source,
-                    "pages": [chunk.page],
+                    "pages": [chunk.page] if is_pdf and chunk.page else [],
                     "filepath": chunk.filepath,
                     "snippet": chunk.text.replace("\n", " ").strip()[:200],
-                    "primary_page": chunk.page,
+                    "primary_page": chunk.page if is_pdf else None,
                 }
             )
 

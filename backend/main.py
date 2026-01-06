@@ -101,6 +101,9 @@ async def upload_guides(files: List[UploadFile] = File(...)) -> dict:
         data = await file.read()
         if not data:
             continue
+        lower = file.filename.lower()
+        if not (lower.endswith(".pdf") or lower.endswith(".docx") or lower.endswith(".txt") or lower.endswith(".md")):
+            raise HTTPException(status_code=400, detail="Unsupported file type. Allowed: pdf, docx, txt, md.")
         summary = guide_manager.add_pdf(file.filename, data)
         uploaded.append({"filename": file.filename, "summary": summary})
 
@@ -273,3 +276,21 @@ async def delete_document(filename: str) -> dict:
     for label in labels_store.values():
         label["document_ids"] = [doc for doc in label.get("document_ids", []) if doc != safe_name]
     return {"status": "ok", "message": f"Deleted {safe_name}"}
+
+
+@app.get("/documents/{filename}/text")
+async def get_document_text(filename: str) -> dict:
+    """Return extracted text for non-PDF documents or PDFs as plain text."""
+
+    safe_name = Path(filename).name
+    path = config.DOCUMENTS_DIR / safe_name
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Document not found.")
+    data = path.read_bytes()
+    try:
+        from rag.chunker import extract_pages_from_bytes
+        pages = extract_pages_from_bytes(safe_name, data)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Unsupported file type.")
+    combined = "\n\n".join(text for _page, text, _stype in pages)
+    return {"filename": safe_name, "text": combined}

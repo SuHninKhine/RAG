@@ -170,7 +170,7 @@ export default function ChatPanel({ onOpenDocument, onResetDocument, selectedDoc
           <div className="border-t border-neutral-200 p-4">
             <form className="space-y-3" onSubmit={handleSubmit}>
               <textarea
-                className="w-full border border-neutral-200 rounded-md px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#3b7f5c] focus:border-transparent bg-white disabled:opacity-60"
+                className="w-full border border-neutral-200 rounded-md px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#1f3a8a] focus:border-transparent bg-white disabled:opacity-60"
                 placeholder="Ask about your documents..."
                 rows={3}
                 value={input}
@@ -181,7 +181,7 @@ export default function ChatPanel({ onOpenDocument, onResetDocument, selectedDoc
               <div className="flex justify-end">
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-[#3b7f5c] text-white hover:bg-[#346e51] disabled:opacity-60"
+                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-[#1f3a8a] text-white hover:bg-[#152b66] disabled:opacity-60"
                   disabled={loading || !input.trim()}
                 >
                   <SendHorizontal className="h-4 w-4" />

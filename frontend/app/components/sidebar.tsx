@@ -1,25 +1,39 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FileText, HelpCircle, MessageCircle, Notebook, Tag } from "lucide-react";
+import { FileText, HelpCircle, MessageCircle, Notebook } from "lucide-react";
+import { listDocuments } from "../../lib/api";
 
 const navItems = [
   { key: "Conversations", label: "Conversations", href: "/", icon: MessageCircle },
   { key: "Documents", label: "Documents", href: "/documents", icon: FileText },
   { key: "Notebook", label: "Notebook", href: "/notebook", icon: Notebook },
-  { key: "Tags", label: "Tags", href: "/tags", icon: Tag },
   { key: "Help", label: "Help", href: "/help", icon: HelpCircle },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const [docCount, setDocCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const docs = await listDocuments();
+        setDocCount(docs.length);
+      } catch (err) {
+        setDocCount(null);
+      }
+    };
+    load();
+  }, []);
 
   return (
     <aside className="w-64 h-full bg-[#f7f7f5] border-r border-neutral-200 flex flex-col">
       <div className="px-4 py-4 border-b border-neutral-200">
         <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-md bg-[#3b7f5c]/15 text-[#3b7f5c] flex items-center justify-center font-semibold text-sm">
+          <div className="h-8 w-8 rounded-md bg-[#1f3a8a]/15 text-[#1f3a8a] flex items-center justify-center font-semibold text-sm">
             dR
           </div>
           <div className="flex flex-col leading-tight">
@@ -39,7 +53,7 @@ export default function Sidebar() {
               href={item.href}
               className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
                 isActive
-                  ? "bg-neutral-100 text-neutral-900 border-l-2 border-[#3b7f5c]"
+                  ? "bg-neutral-100 text-neutral-900 border-l-2 border-[#1f3a8a]"
                   : "text-neutral-700 hover:bg-neutral-100"
               }`}
             >
@@ -56,7 +70,9 @@ export default function Sidebar() {
         </div>
         <div className="flex-1">
           <div className="text-sm font-medium text-neutral-900">You</div>
-          <div className="text-xs text-neutral-500">Documents: —</div>
+          <div className="text-xs text-neutral-500">
+            Documents: {docCount === null ? "…" : docCount}
+          </div>
         </div>
       </div>
     </aside>

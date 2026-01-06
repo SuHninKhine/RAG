@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Check, CheckSquare, Loader2, MoreVertical, Plus, Search, Square, Trash } from "lucide-react";
+import { Check, CheckSquare, Loader2, MoreVertical, Plus, Search, Square, Tag, Trash } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import Sidebar from "../components/sidebar";
@@ -85,7 +85,7 @@ function ApplyLabelsModal({ document, labels, onClose, onLabelsUpdated }: ApplyL
               type="button"
               onClick={handleCreate}
               disabled={creating || !newLabelName.trim()}
-              className="inline-flex items-center gap-2 rounded-md border border-[#3b7f5c] bg-[#3b7f5c] px-3 py-2 text-sm font-medium text-white hover:bg-[#2f654a] disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-md border border-[#1f3a8a] bg-[#1f3a8a] px-3 py-2 text-sm font-medium text-white hover:bg-[#152b66] disabled:opacity-50"
             >
               <Plus className="h-4 w-4" />
               Create
@@ -104,11 +104,11 @@ function ApplyLabelsModal({ document, labels, onClose, onLabelsUpdated }: ApplyL
                     type="button"
                     onClick={() => toggleLabel(label)}
                     className={`w-full flex items-center justify-between px-3 py-2 text-sm ${
-                      assigned ? "bg-[#3b7f5c]/10 text-neutral-900" : "text-neutral-800 hover:bg-neutral-50"
+                      assigned ? "bg-[#1f3a8a]/10 text-neutral-900" : "text-neutral-800 hover:bg-neutral-50"
                     }`}
                   >
                     <span className="truncate text-left">{label.name}</span>
-                    {assigned && <Check className="h-4 w-4 text-[#3b7f5c]" />}
+                    {assigned && <Check className="h-4 w-4 text-[#1f3a8a]" />}
                   </button>
                 );
               })
@@ -235,21 +235,21 @@ export default function DocumentsPage() {
             <h1 className="text-lg font-semibold text-neutral-900">Documents</h1>
             {loading && <Loader2 className="h-4 w-4 animate-spin text-neutral-500" />}
           </div>
-          <Link href="/" className="text-sm text-[#3b7f5c] hover:text-[#2f654a] font-medium">
+          <Link href="/" className="text-sm text-[#1f3a8a] hover:text-[#152b66] font-medium">
             Back to chat
           </Link>
         </div>
 
         <div className="px-4 py-3 flex items-center gap-3 text-sm flex-wrap">
-          <div className="flex items-center gap-2">
-            <input
-              ref={inputRef}
-              type="file"
-              accept="application/pdf"
-              multiple
-              className="hidden"
-              onChange={(e) => handleUpload(e.target.files)}
-            />
+              <div className="flex items-center gap-2">
+                <input
+                  ref={inputRef}
+                  type="file"
+                  accept=".pdf,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => handleUpload(e.target.files)}
+                />
             <button
               type="button"
               onClick={() => inputRef.current?.click()}
@@ -275,7 +275,7 @@ export default function DocumentsPage() {
               localStorage.setItem("doc_selection", docsParam);
               router.push(`/?docs=${encodeURIComponent(docsParam)}`);
             }}
-            className="inline-flex items-center gap-2 rounded-md border border-[#3b7f5c] bg-[#3b7f5c] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#346e51] disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-md border border-[#1f3a8a] bg-[#1f3a8a] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#152b66] disabled:opacity-50"
           >
             Ask with selected documents
           </button>
@@ -317,7 +317,7 @@ export default function DocumentsPage() {
                       <div className="truncate" title={doc.filename}>
                         {doc.filename}
                       </div>
-                      <div className="text-neutral-600">PDF</div>
+                      <div className="text-neutral-600">{doc.filename.split(".").pop()?.toUpperCase() ?? ""}</div>
                       <div className="text-neutral-600">{new Date(doc.uploaded_at).toLocaleString()}</div>
                       <div className="text-right text-neutral-700">{doc.pages}</div>
                       <div className="flex items-center justify-end relative">
@@ -332,12 +332,13 @@ export default function DocumentsPage() {
                           <div className="absolute right-3 top-9 z-20 w-44 rounded-md border border-neutral-200 bg-white shadow-lg">
                             <button
                               type="button"
-                              className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50 flex items-center gap-2"
                               onClick={() => {
                                 setModalDoc(doc);
                                 setMenuOpen(null);
                               }}
                             >
+                              <Tag className="h-4 w-4 text-neutral-500" />
                               Apply labels
                             </button>
                             <button

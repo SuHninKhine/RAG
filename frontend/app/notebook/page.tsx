@@ -53,7 +53,7 @@ export default function NotebookPage() {
             <h1 className="text-lg font-semibold text-neutral-900">Notebook</h1>
             {loading && <Loader2 className="h-4 w-4 animate-spin text-neutral-500" />}
           </div>
-          <Link href="/" className="text-sm text-[#3b7f5c] hover:text-[#2f654a] font-medium">
+          <Link href="/" className="text-sm text-[#1f3a8a] hover:text-[#152b66] font-medium">
             Back to chat
           </Link>
         </div>

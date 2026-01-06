@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 import faiss
 
@@ -14,7 +14,7 @@ class Chunk:
 
     text: str
     source: str
-    page: int
+    page: Optional[int]
     filepath: str
     chunk_id: int
 

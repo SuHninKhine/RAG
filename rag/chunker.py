@@ -12,8 +12,10 @@ from . import config
 from .models import Chunk
 
 
-def _extract_pdf(data: bytes) -> List[Tuple[Optional[int], str]]:
+def _extract_pdf(data: bytes, max_pages: int) -> List[Tuple[Optional[int], str]]:
     reader = PyPDF2.PdfReader(io.BytesIO(data))
+    if len(reader.pages) > max_pages:
+        raise ValueError(f"PDF has too many pages ({len(reader.pages)} > {max_pages}).")
     pages: List[Tuple[Optional[int], str]] = []
     for idx, page in enumerate(reader.pages, start=1):
         text = page.extract_text() or ""
@@ -32,12 +34,14 @@ def _extract_text(data: bytes) -> List[Tuple[Optional[int], str]]:
     return [(1, text)]
 
 
-def extract_pages_from_bytes(filename: str, data: bytes) -> List[Tuple[Optional[int], str, str]]:
+def extract_pages_from_bytes(
+    filename: str, data: bytes, max_pages: Optional[int] = None
+) -> List[Tuple[Optional[int], str, str]]:
     """Extract text with page info and source type based on file extension."""
 
     lower = filename.lower()
     if lower.endswith(".pdf"):
-        pages = _extract_pdf(data)
+        pages = _extract_pdf(data, max_pages or config.MAX_PDF_PAGES)
         source_type = "pdf"
     elif lower.endswith(".docx"):
         pages = _extract_docx(data)

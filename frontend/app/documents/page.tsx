@@ -33,10 +33,8 @@ function ApplyLabelsModal({ document, labels, onClose, onLabelsUpdated }: ApplyL
   const filtered = labels.filter((l) => l.name.toLowerCase().includes(filter.toLowerCase()));
 
   const toggleLabel = async (label: Label) => {
-    const assigned = label.document_ids.includes(document.filename);
-    const nextDocs = assigned
-      ? label.document_ids.filter((id) => id !== document.filename)
-      : [...label.document_ids, document.filename];
+    const assigned = label.document_ids.includes(document.id);
+    const nextDocs = assigned ? label.document_ids.filter((id) => id !== document.id) : [...label.document_ids, document.id];
     const updated = await updateLabel(label.id, label.name, nextDocs);
     onLabelsUpdated(labels.map((l) => (l.id === updated.id ? updated : l)));
   };
@@ -45,7 +43,7 @@ function ApplyLabelsModal({ document, labels, onClose, onLabelsUpdated }: ApplyL
     if (!newLabelName.trim()) return;
     setCreating(true);
     try {
-      const created = await createLabel(newLabelName.trim(), [document.filename]);
+      const created = await createLabel(newLabelName.trim(), [document.id]);
       onLabelsUpdated([...labels, created]);
       setNewLabelName("");
     } finally {
@@ -143,6 +141,7 @@ export default function DocumentsPage() {
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
   const [modalDoc, setModalDoc] = useState<DocumentInfo | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const pollRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -160,9 +159,16 @@ export default function DocumentsPage() {
       }
     };
     load();
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
   }, []);
 
-  const toggleSelect = (id: string) => {
+  const toggleSelect = (id: string, status: string) => {
+    if (status !== "ready") return;
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -175,14 +181,16 @@ export default function DocumentsPage() {
   };
 
   const selectAll = () => {
-    if (selected.size === documents.length) {
+    const readyDocs = documents.filter((d) => d.status === "ready");
+    if (selected.size === readyDocs.length) {
       setSelected(new Set());
     } else {
-      setSelected(new Set(documents.map((d) => d.filename)));
+      setSelected(new Set(readyDocs.map((d) => d.filename)));
     }
   };
 
   const hasDocs = documents.length > 0;
+  const readyDocs = documents.filter((d) => d.status === "ready");
   const ctaDisabled = selected.size === 0;
   const docsParam = useMemo(() => Array.from(selected).join(","), [selected]);
 
@@ -196,7 +204,26 @@ export default function DocumentsPage() {
       const refreshedLabels = await listLabels();
       setDocuments(refreshedDocs);
       setLabels(refreshedLabels);
-      setUploadMessage("Upload finished.");
+      setUploadMessage("Upload queued.");
+      // start polling for status changes if not already polling
+      if (!pollRef.current) {
+        pollRef.current = setInterval(async () => {
+          try {
+            const latest = await listDocuments();
+            setDocuments(latest);
+            const hasPending = latest.some((d) => d.status === "pending" || d.status === "processing");
+            if (!hasPending && pollRef.current) {
+              clearInterval(pollRef.current);
+              pollRef.current = null;
+            }
+          } catch {
+            if (pollRef.current) {
+              clearInterval(pollRef.current);
+              pollRef.current = null;
+            }
+          }
+        }, 3000);
+      }
     } catch (err) {
       setUploadMessage(err instanceof Error ? err.message : "Upload failed.");
     } finally {
@@ -266,7 +293,7 @@ export default function DocumentsPage() {
             className="inline-flex items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100 disabled:opacity-50"
             disabled={!hasDocs}
           >
-            {selected.size === documents.length && documents.length > 0 ? "Clear selection" : "Select all"}
+            {selected.size === readyDocs.length && readyDocs.length > 0 ? "Clear selection" : "Select ready"}
           </button>
           <button
             type="button"
@@ -288,11 +315,12 @@ export default function DocumentsPage() {
             <div className="mt-8 text-sm text-neutral-500">No documents uploaded.</div>
           ) : (
             <div className="border border-neutral-200 rounded-lg">
-              <div className="grid grid-cols-[40px_1fr_120px_140px_100px_60px] bg-neutral-50 text-xs font-medium text-neutral-600 px-3 py-2">
+              <div className="grid grid-cols-[40px_1fr_120px_140px_100px_100px_60px] bg-neutral-50 text-xs font-medium text-neutral-600 px-3 py-2">
                 <div className="text-center">Select</div>
                 <div>Filename</div>
                 <div>Type</div>
                 <div>Uploaded</div>
+                <div>Status</div>
                 <div className="text-right">Pages</div>
                 <div className="text-right">Actions</div>
               </div>
@@ -301,16 +329,18 @@ export default function DocumentsPage() {
                   const checked = selected.has(doc.filename);
                   const Icon = checked ? CheckSquare : Square;
                   const isMenuOpen = menuOpen === doc.filename;
+                  const selectable = doc.status === "ready";
                   return (
                     <div
                       key={doc.filename}
-                      className="grid grid-cols-[40px_1fr_120px_140px_100px_60px] items-center px-3 py-2 text-sm text-neutral-800 hover:bg-neutral-50 relative"
+                      className="grid grid-cols-[40px_1fr_120px_140px_100px_100px_60px] items-center px-3 py-2 text-sm text-neutral-800 hover:bg-neutral-50 relative"
                     >
                       <button
                         type="button"
-                        className="flex items-center justify-center text-neutral-600 hover:text-neutral-800"
-                        onClick={() => toggleSelect(doc.filename)}
+                        className={`flex items-center justify-center text-neutral-600 hover:text-neutral-800 ${!selectable ? "opacity-40 cursor-not-allowed" : ""}`}
+                        onClick={() => toggleSelect(doc.filename, doc.status)}
                         aria-label={checked ? "Deselect document" : "Select document"}
+                        disabled={!selectable}
                       >
                         <Icon className="h-4 w-4" />
                       </button>
@@ -319,7 +349,23 @@ export default function DocumentsPage() {
                       </div>
                       <div className="text-neutral-600">{doc.filename.split(".").pop()?.toUpperCase() ?? ""}</div>
                       <div className="text-neutral-600">{new Date(doc.uploaded_at).toLocaleString()}</div>
-                      <div className="text-right text-neutral-700">{doc.pages}</div>
+                      <div className="text-neutral-700">
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                            doc.status === "ready"
+                              ? "bg-green-50 text-green-700"
+                              : doc.status === "failed"
+                                ? "bg-rose-50 text-rose-700"
+                                : doc.status === "pending" || doc.status === "processing"
+                                  ? "bg-amber-50 text-amber-700"
+                                  : "bg-neutral-100 text-neutral-600"
+                          }`}
+                          title={["pending", "processing", "ready", "failed"].includes(doc.status) ? "" : "Unknown status"}
+                        >
+                          {doc.status}
+                        </span>
+                      </div>
+                      <div className="text-right text-neutral-700">{doc.pages ?? "—"}</div>
                       <div className="flex items-center justify-end relative">
                         <button
                           type="button"

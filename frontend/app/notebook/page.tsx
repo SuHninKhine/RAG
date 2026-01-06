@@ -83,6 +83,11 @@ export default function NotebookPage() {
                   <div className="text-sm text-neutral-900 mb-2 whitespace-pre-wrap">{entry.question}</div>
                   <div className="text-xs uppercase tracking-wide text-neutral-400 mb-1">Answer</div>
                   <div className="text-sm text-neutral-900 whitespace-pre-wrap">{entry.answer}</div>
+                  {entry.document_ids && entry.document_ids.length > 0 && (
+                    <div className="mt-2 text-xs text-neutral-500">
+                      Document links unavailable (source may be deleted or not ready).
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

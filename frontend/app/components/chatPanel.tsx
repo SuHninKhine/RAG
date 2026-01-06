@@ -5,7 +5,7 @@ import { BookmarkPlus, SendHorizontal } from "lucide-react";
 
 import ChatMessage from "./chatMessage";
 import type { Citation, SourceInfo } from "../../lib/api";
-import { askQuestion, saveNotebookEntry } from "../../lib/api";
+import { askQuestion, listDocuments, saveNotebookEntry } from "../../lib/api";
 
 type ChatMessageItem = {
   id: string;
@@ -20,9 +20,10 @@ type ChatPanelProps = {
   onResetDocument?: () => void;
   selectedDocumentIds?: string[];
   labelId?: string;
+  canQuery?: boolean;
 };
 
-export default function ChatPanel({ onOpenDocument, onResetDocument, selectedDocumentIds, labelId }: ChatPanelProps) {
+export default function ChatPanel({ onOpenDocument, onResetDocument, selectedDocumentIds, labelId, canQuery = true }: ChatPanelProps) {
   const initialMessages = useMemo<ChatMessageItem[]>(
     () => [
       {
@@ -57,7 +58,7 @@ export default function ChatPanel({ onOpenDocument, onResetDocument, selectedDoc
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || loading) return;
+    if (!input.trim() || loading || !canQuery) return;
     if (onResetDocument) {
       onResetDocument();
     }
@@ -85,7 +86,22 @@ export default function ChatPanel({ onOpenDocument, onResetDocument, selectedDoc
       };
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
+      const msg = err instanceof Error ? err.message : "Something went wrong.";
+      if (msg.includes("400")) {
+        setError("Documents are not ready. Please refresh documents and try again.");
+        try {
+          const docs = await listDocuments();
+          const ready = docs.filter((d) => d.status === "ready").map((d) => d.filename);
+          setSelectedDocumentIds((prev) => prev.filter((id) => ready.includes(id)));
+          if (ready.length === 0) {
+            localStorage.removeItem("doc_selection");
+          }
+        } catch (loadErr) {
+          console.error("Failed to refresh documents after error", loadErr);
+        }
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -182,7 +198,7 @@ export default function ChatPanel({ onOpenDocument, onResetDocument, selectedDoc
                 <button
                   type="submit"
                   className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-[#1f3a8a] text-white hover:bg-[#152b66] disabled:opacity-60"
-                  disabled={loading || !input.trim()}
+                  disabled={loading || !input.trim() || !canQuery}
                 >
                   <SendHorizontal className="h-4 w-4" />
                   {loading ? "Sending" : "Send"}

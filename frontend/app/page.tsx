@@ -18,6 +18,8 @@ export default function HomePage() {
   const [docExpanded, setDocExpanded] = useState(false);
   const [docMeta, setDocMeta] = useState<{ filename?: string; page?: number; snippet?: string }>({});
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
+  const [readyDocuments, setReadyDocuments] = useState<Set<string>>(new Set());
+  const [docIdToFilename, setDocIdToFilename] = useState<Record<number, string>>({});
   const [labels, setLabels] = useState<Label[]>([]);
   const [activeLabelId, setActiveLabelId] = useState<string | "all">("all");
   const [docWidth, setDocWidth] = useState<number>(380);
@@ -53,10 +55,19 @@ export default function HomePage() {
   }, [searchParams]);
 
   useEffect(() => {
+    let cancelled = false;
     const reconcileSelection = async () => {
       try {
         const docs = await listDocuments();
-        const existing = new Set(docs.map((d) => d.filename));
+        if (cancelled) return;
+        const ready = docs.filter((d) => d.status === "ready").map((d) => d.filename);
+        const existing = new Set(ready);
+        const map: Record<number, string> = {};
+        docs.forEach((d) => {
+          map[d.id] = d.filename;
+        });
+        setDocIdToFilename(map);
+        setReadyDocuments(new Set(ready));
         setSelectedDocumentIds((prev) => {
           const next = prev.filter((id) => existing.has(id));
           if (next.length !== prev.length) {
@@ -73,6 +84,11 @@ export default function HomePage() {
       }
     };
     reconcileSelection();
+    const interval = setInterval(reconcileSelection, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, []);
 
   useEffect(() => {
@@ -80,7 +96,7 @@ export default function HomePage() {
       try {
         const data = await listLabels();
         setLabels(data);
-        if (activeLabelId !== "all" && !data.find((l) => l.id === activeLabelId)) {
+        if (activeLabelId !== "all" && !data.find((l) => String(l.id) === String(activeLabelId))) {
           setActiveLabelId("all");
         }
       } catch (err) {
@@ -143,12 +159,25 @@ export default function HomePage() {
     window.addEventListener("mouseup", handleUp);
   };
 
+  const labelObj = labels.find((l) => String(l.id) === String(activeLabelId));
+  const readyForLabel =
+    labelObj && Object.keys(docIdToFilename).length > 0
+      ? labelObj.document_ids
+          .map((id) => docIdToFilename[id])
+          .filter((name): name is string => !!name)
+          .filter((name) => readyDocuments.has(name))
+      : [];
+  const hasReady = readyDocuments.size > 0;
   const contextLabel =
     activeLabelId !== "all"
-      ? `Label: ${labels.find((l) => l.id === activeLabelId)?.name ?? "Unknown"} (${labels.find((l) => l.id === activeLabelId)?.document_ids.length ?? 0} documents)`
+      ? readyForLabel.length > 0
+        ? `Label: ${labelObj?.name ?? "Unknown"} (${readyForLabel.length} ready)`
+        : `Label: ${labelObj?.name ?? "Unknown"} (no ready documents)`
       : selectedDocumentIds.length > 0
         ? `Asking across ${selectedDocumentIds.length} document${selectedDocumentIds.length > 1 ? "s" : ""}`
-        : "Please choose document to ask";
+        : hasReady
+          ? "Please choose document to ask"
+          : "No ready documents available";
 
   const chatSessionKey =
     activeLabelId !== "all"
@@ -198,7 +227,7 @@ export default function HomePage() {
             >
               <option value="all">All documents (auto)</option>
               {labels.map((label) => (
-                <option key={label.id} value={label.id}>
+                <option key={label.id} value={String(label.id)}>
                   {label.name} ({label.document_ids.length})
                 </option>
               ))}
@@ -220,6 +249,13 @@ export default function HomePage() {
             onResetDocument={handleResetDocument}
             selectedDocumentIds={selectedDocumentIds}
             labelId={activeLabelId !== "all" ? activeLabelId : undefined}
+            canQuery={
+              activeLabelId !== "all"
+                ? readyForLabel.length > 0
+                : selectedDocumentIds.length > 0
+                  ? true
+                  : readyDocuments.size > 0
+            }
           />
           {showDocPanel && (
             <>

@@ -18,9 +18,13 @@ def _env(name: str, default: str | None = None) -> str:
     return val
 
 
-# Paths
+# Storage backend selection
+STORAGE_BACKEND: Literal["local", "supabase"] = os.getenv("STORAGE_BACKEND", "supabase")
+
+# Paths (local temp only when using supabase storage)
 BASE_DIR = Path(__file__).resolve().parent
-DATA_DIR = Path(os.getenv("RAG_DATA_DIR", BASE_DIR))
+DEFAULT_DATA_DIR = "/tmp/rag" if STORAGE_BACKEND == "supabase" else str(BASE_DIR)
+DATA_DIR = Path(os.getenv("RAG_DATA_DIR", DEFAULT_DATA_DIR))
 DOCUMENTS_DIR = DATA_DIR / "documents"
 INDEX_DIR = DATA_DIR / "indexes"
 DB_PATH = DATA_DIR / "rag.db"
@@ -30,9 +34,6 @@ INDEX_DIR.mkdir(parents=True, exist_ok=True)
 
 # Database
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DB_PATH}")
-
-# Storage backend (placeholder for future swaps, currently only "local")
-STORAGE_BACKEND: Literal["local"] = os.getenv("STORAGE_BACKEND", "local")  # noqa: ARG001
 
 # Chunking / retrieval
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "800"))
@@ -50,6 +51,25 @@ LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(20 * 1024 * 1024)))  # 20 MB
 MAX_PDF_PAGES = int(os.getenv("MAX_PDF_PAGES", "500"))
 MAX_DOCS_PER_QUERY = int(os.getenv("MAX_DOCS_PER_QUERY", "5"))
+
+# CORS
+_cors_env = os.getenv("CORS_ALLOW_ORIGINS", "*")
+CORS_ALLOW_ORIGINS = ["*"] if _cors_env.strip() == "*" else [o.strip() for o in _cors_env.split(",") if o.strip()]
+
+# Supabase storage config (required when STORAGE_BACKEND=supabase)
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+SUPABASE_DOCS_BUCKET = os.getenv("SUPABASE_DOCS_BUCKET")
+SUPABASE_INDEX_BUCKET = os.getenv("SUPABASE_INDEX_BUCKET")
+if STORAGE_BACKEND == "supabase":
+    if not SUPABASE_URL:
+        raise RuntimeError("SUPABASE_URL environment variable must be set when using supabase storage.")
+    if not SUPABASE_SERVICE_ROLE_KEY:
+        raise RuntimeError("SUPABASE_SERVICE_ROLE_KEY environment variable must be set when using supabase storage.")
+    if not SUPABASE_DOCS_BUCKET:
+        raise RuntimeError("SUPABASE_DOCS_BUCKET environment variable must be set when using supabase storage.")
+    if not SUPABASE_INDEX_BUCKET:
+        raise RuntimeError("SUPABASE_INDEX_BUCKET environment variable must be set when using supabase storage.")
 
 # Keys
 OPENAI_API_KEY = _env("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
@@ -72,6 +92,10 @@ __all__ = [
     "DB_PATH",
     "DATABASE_URL",
     "STORAGE_BACKEND",
+    "SUPABASE_URL",
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "SUPABASE_DOCS_BUCKET",
+    "SUPABASE_INDEX_BUCKET",
     "CHUNK_SIZE",
     "CHUNK_OVERLAP",
     "TOP_K_DOCS",
@@ -83,6 +107,7 @@ __all__ = [
     "MAX_UPLOAD_BYTES",
     "MAX_PDF_PAGES",
     "MAX_DOCS_PER_QUERY",
+    "CORS_ALLOW_ORIGINS",
     "OPENAI_API_KEY",
     "logger",
 ]

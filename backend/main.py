@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from pathlib import Path
 from typing import List, Optional
 
 from fastapi import BackgroundTasks, Depends, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from fastapi import FastAPI
 from pydantic import BaseModel
 
@@ -22,14 +21,14 @@ from rag.db import (
     init_db,
 )
 from rag.guide_manager import GuideManager
-from rag.storage import get_document_storage, get_index_storage
+from rag.storage import get_document_storage
 
 
 app = FastAPI(title="RAG Backend", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=config.CORS_ALLOW_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -37,7 +36,6 @@ app.add_middleware(
 
 guide_manager = GuideManager()
 doc_storage = get_document_storage()
-index_storage = get_index_storage()
 ingest_lock = asyncio.Lock()
 
 
@@ -107,11 +105,11 @@ def get_db():
 
 
 async def reconcile_processing(db) -> None:
-    """Mark any stuck processing docs as failed on startup."""
+    """Mark any stuck pending/processing docs as failed on startup."""
 
     stuck = (
         db.query(Document)
-        .filter(Document.status == DocumentStatus.processing)
+        .filter(Document.status.in_([DocumentStatus.processing, DocumentStatus.pending]))
         .all()
     )
     for doc in stuck:
@@ -129,12 +127,25 @@ async def on_startup() -> None:
 
 
 def _validate_upload(file: UploadFile):
-    if file.size and file.size > config.MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=400, detail="File too large.")
-    lower = file.filename.lower()
+    safe_name = Path(file.filename or "").name
+    if not safe_name:
+        raise HTTPException(status_code=400, detail="Invalid filename.")
+    logger.info(
+        "Upload received",
+        extra={
+            "upload_filename": safe_name,
+            "content_type": file.content_type,
+            "size": getattr(file, "size", None),
+        },
+    )
+    lower = safe_name.lower()
     if not (lower.endswith(".pdf") or lower.endswith(".docx") or lower.endswith(".txt") or lower.endswith(".md")):
+        logger.warning(
+            "Upload rejected: unsupported file type",
+            extra={"upload_filename": safe_name},
+        )
         raise HTTPException(status_code=400, detail="Unsupported file type. Allowed: pdf, docx, txt, md.")
-    return lower
+    return safe_name
 
 
 async def _ingest_background(filename: str, data: bytes, file_type: str) -> None:
@@ -159,18 +170,34 @@ async def upload_guides(
     """Ingest one or more guides into the RAG system asynchronously."""
 
     if not files:
+        logger.warning("Upload rejected: no files provided")
         raise HTTPException(status_code=400, detail="No files uploaded.")
 
     uploaded = []
     for file in files:
-        _validate_upload(file)
+        safe_name = _validate_upload(file)
         data = await file.read()
+        if len(data) > config.MAX_UPLOAD_BYTES:
+            logger.warning(
+                "Upload rejected: file too large",
+                extra={
+                    "upload_filename": safe_name,
+                    "size": len(data),
+                    "max_upload_bytes": config.MAX_UPLOAD_BYTES,
+                },
+            )
+            raise HTTPException(status_code=413, detail="File too large.")
+        logger.info(
+            "Upload payload read",
+            extra={"upload_filename": safe_name, "bytes": len(data)},
+        )
         if not data:
+            logger.warning("Upload skipped: empty file", extra={"upload_filename": safe_name})
             continue
         # create DB row
         doc = Document(
-            filename=file.filename,
-            file_type=Path(file.filename).suffix.lower().lstrip("."),
+            filename=safe_name,
+            file_type=Path(safe_name).suffix.lower().lstrip("."),
             status=DocumentStatus.pending,
             pages=None,
             summary=None,
@@ -180,10 +207,11 @@ async def upload_guides(
         db.refresh(doc)
         # schedule ingestion
         if background_tasks is not None:
-            background_tasks.add_task(_ingest_background, file.filename, data, doc.file_type)
-        uploaded.append({"filename": file.filename, "summary": None, "status": doc.status.value})
+            background_tasks.add_task(_ingest_background, safe_name, data, doc.file_type)
+        uploaded.append({"filename": safe_name, "summary": None, "status": doc.status.value})
 
     if not uploaded:
+        logger.warning("Upload rejected: no valid files after validation/read")
         raise HTTPException(status_code=400, detail="No valid files provided.")
 
     return {
@@ -219,12 +247,13 @@ async def get_document(filename: str):
     """Serve a previously uploaded document from storage."""
 
     safe_name = Path(filename).name
-    path = doc_storage.path_for(safe_name)
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="Document not found.")
     media_type = "application/pdf" if safe_name.lower().endswith(".pdf") else "application/octet-stream"
-    return FileResponse(
-        path,
+    try:
+        data = doc_storage.read_bytes(safe_name)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    return Response(
+        content=data,
         media_type=media_type,
         headers={"Content-Disposition": f'inline; filename="{safe_name}"'},
     )
@@ -265,10 +294,10 @@ async def get_document_text(filename: str):
     """Return extracted text for non-PDF documents or PDFs as plain text."""
 
     safe_name = Path(filename).name
-    path = doc_storage.path_for(safe_name)
-    if not path.exists():
+    try:
+        data = doc_storage.read_bytes(safe_name)
+    except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Document not found.")
-    data = path.read_bytes()
     try:
         from rag.chunker import extract_pages_from_bytes
 

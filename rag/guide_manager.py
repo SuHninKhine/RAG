@@ -1,19 +1,12 @@
-﻿"""Guide manager orchestrating ingestion, retrieval, and QA."""
+﻿"""Guide manager orchestrating ingestion, retrieval, and QA with persistence."""
 from __future__ import annotations
-
-from __future__ import annotations
-
-"""Guide manager orchestrating ingestion, retrieval, and QA with persistence."""
 
 import asyncio
 import json
-from dataclasses import replace
 from datetime import datetime
-from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import faiss
-import numpy as np
 
 from . import config
 from .chunker import chunk_text, extract_pages_from_bytes
@@ -40,6 +33,8 @@ class GuideManager:
         self.doc_storage = get_document_storage()
         self.index_storage = get_index_storage()
         self._lock = asyncio.Lock()
+        self._root_index_name = "root.faiss"
+        self._root_meta_name = "root.meta.json"
 
     async def load_indexes_on_startup(self) -> None:
         """Load all ready documents and indexes from storage on startup."""
@@ -58,19 +53,22 @@ class GuideManager:
                     .all()
                 )
                 for doc in ready_docs:
+                    if not self.doc_storage.exists(doc.filename):
+                        doc.status = DocumentStatus.failed
+                        session.add(doc)
+                        continue
                     index = self.index_storage.load(f"{doc.filename}.faiss")
                     if not index:
                         # Index missing; mark as failed for safety.
                         doc.status = DocumentStatus.failed
                         session.add(doc)
                         continue
-                    # Load chunks metadata
-                    meta_path = self.index_storage.path_for(f"{doc.filename}.meta.json")
-                    if not meta_path.exists():
+                    meta_text = self.index_storage.read_text(f"{doc.filename}.meta.json")
+                    if not meta_text:
                         doc.status = DocumentStatus.failed
                         session.add(doc)
                         continue
-                    meta = json.loads(meta_path.read_text())
+                    meta = json.loads(meta_text)
                     chunks = [
                         Chunk(
                             text=item["text"],
@@ -92,8 +90,10 @@ class GuideManager:
                     )
                     self.guides[doc.filename] = guide
                 session.commit()
-            # Rebuild root index from loaded guides
-            self._build_root_index_locked()
+            # Restore root index if possible, otherwise rebuild.
+            if not self._load_root_index_locked():
+                self._build_root_index_locked()
+                self._persist_root_index_locked()
 
     def _build_root_index_locked(self) -> None:
         """Build root index; caller must hold lock."""
@@ -111,6 +111,45 @@ class GuideManager:
         self.root_index = faiss.IndexFlatL2(summary_vectors.shape[1])
         self.root_index.add(summary_vectors)
         self.root_index_items = [guide.filename for guide in self.guides.values()]
+
+    def _persist_root_index_locked(self) -> None:
+        """Persist root index and mapping; caller must hold lock."""
+
+        if not self.root_index:
+            self.index_storage.delete(self._root_index_name)
+            self.index_storage.delete(self._root_meta_name)
+            return
+        tmp_index = f"{self._root_index_name}.tmp"
+        tmp_meta = f"{self._root_meta_name}.tmp"
+        self.index_storage.save(tmp_index, self.root_index)
+        self.index_storage.move(tmp_index, self._root_index_name)
+        self.index_storage.write_text(
+            tmp_meta,
+            json.dumps({"items": self.root_index_items}),
+        )
+        self.index_storage.move(tmp_meta, self._root_meta_name)
+
+    def _load_root_index_locked(self) -> bool:
+        """Load persisted root index if present and consistent."""
+
+        index = self.index_storage.load(self._root_index_name)
+        meta_text = self.index_storage.read_text(self._root_meta_name)
+        if not index or not meta_text:
+            return False
+        try:
+            meta = json.loads(meta_text)
+            items = meta.get("items", [])
+            if not isinstance(items, list):
+                return False
+            if set(items) != set(self.guides.keys()):
+                return False
+            if len(items) != len(self.guides):
+                return False
+            self.root_index = index
+            self.root_index_items = items
+            return True
+        except Exception:
+            return False
 
     async def ingest_document(self, filename: str, data: bytes, file_type: str) -> None:
         """Run ingestion in background: extract -> chunk -> embed -> index -> persist."""
@@ -141,10 +180,12 @@ class GuideManager:
             # Persist index and metadata atomically
             tmp_index_name = f"{filename}.faiss.tmp"
             final_index_name = f"{filename}.faiss"
-            tmp_meta = self.index_storage.path_for(f"{filename}.meta.json.tmp")
-            final_meta = self.index_storage.path_for(f"{filename}.meta.json")
-            faiss.write_index(index, str(self.index_storage.path_for(tmp_index_name)))
-            tmp_meta.write_text(
+            tmp_meta_name = f"{filename}.meta.json.tmp"
+            final_meta_name = f"{filename}.meta.json"
+            self.index_storage.save(tmp_index_name, index)
+            self.index_storage.move(tmp_index_name, final_index_name)
+            self.index_storage.write_text(
+                tmp_meta_name,
                 json.dumps(
                     {
                         "filename": filename,
@@ -162,11 +203,9 @@ class GuideManager:
                         "pages": len(pages),
                         "file_type": file_type,
                     }
-                )
+                ),
             )
-            # Atomic rename
-            self.index_storage.path_for(tmp_index_name).rename(self.index_storage.path_for(final_index_name))
-            tmp_meta.rename(final_meta)
+            self.index_storage.move(tmp_meta_name, final_meta_name)
 
             with SessionLocal() as session:
                 doc = session.query(Document).filter_by(filename=filename).first()
@@ -190,6 +229,7 @@ class GuideManager:
                 )
                 self.guides[filename] = guide
                 self._build_root_index_locked()
+                self._persist_root_index_locked()
         except Exception as exc:
             config.logger.exception("Ingestion failed for %s: %s", filename, exc)
             with SessionLocal() as session:
@@ -202,11 +242,10 @@ class GuideManager:
             async with self._lock:
                 self.doc_storage.delete(filename)
                 self.index_storage.delete(f"{filename}.faiss")
-                meta_path = self.index_storage.path_for(f"{filename}.meta.json")
-                if meta_path.exists():
-                    meta_path.unlink()
+                self.index_storage.delete(f"{filename}.meta.json")
                 self.guides.pop(filename, None)
                 self._build_root_index_locked()
+                self._persist_root_index_locked()
 
     def route_query(self, question: str) -> List[Tuple[Guide, float]]:
         """Select the most relevant guides for a question."""
@@ -355,8 +394,7 @@ class GuideManager:
             self.guides.pop(filename, None)
             self.doc_storage.delete(filename)
             self.index_storage.delete(f"{filename}.faiss")
-            meta_path = self.index_storage.path_for(f"{filename}.meta.json")
-            if meta_path.exists():
-                meta_path.unlink()
+            self.index_storage.delete(f"{filename}.meta.json")
             self._build_root_index_locked()
+            self._persist_root_index_locked()
         return True

@@ -52,6 +52,10 @@ MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(20 * 1024 * 1024)))  # 
 MAX_PDF_PAGES = int(os.getenv("MAX_PDF_PAGES", "500"))
 MAX_DOCS_PER_QUERY = int(os.getenv("MAX_DOCS_PER_QUERY", "5"))
 
+# Startup timeouts
+STARTUP_DB_TIMEOUT_SECONDS = float(os.getenv("STARTUP_DB_TIMEOUT_SECONDS", "10"))
+STARTUP_INDEX_TIMEOUT_SECONDS = float(os.getenv("STARTUP_INDEX_TIMEOUT_SECONDS", "30"))
+
 # CORS
 _cors_env = os.getenv("CORS_ALLOW_ORIGINS", "*")
 CORS_ALLOW_ORIGINS = ["*"] if _cors_env.strip() == "*" else [o.strip() for o in _cors_env.split(",") if o.strip()]
@@ -107,6 +111,8 @@ __all__ = [
     "MAX_UPLOAD_BYTES",
     "MAX_PDF_PAGES",
     "MAX_DOCS_PER_QUERY",
+    "STARTUP_DB_TIMEOUT_SECONDS",
+    "STARTUP_INDEX_TIMEOUT_SECONDS",
     "CORS_ALLOW_ORIGINS",
     "OPENAI_API_KEY",
     "logger",

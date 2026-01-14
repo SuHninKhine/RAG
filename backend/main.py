@@ -120,10 +120,33 @@ async def reconcile_processing(db) -> None:
 
 @app.on_event("startup")
 async def on_startup() -> None:
-    init_db()
-    with SessionLocal() as db:
-        await reconcile_processing(db)
-    await guide_manager.load_indexes_on_startup()
+    try:
+        await asyncio.wait_for(
+            asyncio.to_thread(init_db),
+            timeout=config.STARTUP_DB_TIMEOUT_SECONDS,
+        )
+    except Exception as exc:
+        logger.exception("Startup DB init failed or timed out: %s", exc)
+    else:
+        try:
+            with SessionLocal() as db:
+                await reconcile_processing(db)
+        except Exception as exc:
+            logger.exception("Startup reconciliation failed: %s", exc)
+    try:
+        await asyncio.wait_for(
+            guide_manager.load_indexes_on_startup(),
+            timeout=config.STARTUP_INDEX_TIMEOUT_SECONDS,
+        )
+    except Exception as exc:
+        logger.exception("Startup index load failed or timed out: %s", exc)
+
+
+@app.get("/health")
+async def health_check() -> dict:
+    """Basic health check for load balancers."""
+
+    return {"status": "ok"}
 
 
 def _validate_upload(file: UploadFile):

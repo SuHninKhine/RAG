@@ -110,7 +110,7 @@ export default function HomePage() {
     setDocMeta({
       filename: source.filename,
       page: page ?? source.primaryPage ?? source.pages?.[0],
-      snippet: source.snippet,
+      snippet: source.snippet ?? undefined,
     });
     setShowDocPanel(true);
   };

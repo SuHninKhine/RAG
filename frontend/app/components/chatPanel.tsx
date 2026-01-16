@@ -21,9 +21,17 @@ type ChatPanelProps = {
   selectedDocumentIds?: string[];
   labelId?: string;
   canQuery?: boolean;
+  onSelectionPrune?: (nextIds: string[]) => void;
 };
 
-export default function ChatPanel({ onOpenDocument, onResetDocument, selectedDocumentIds, labelId, canQuery = true }: ChatPanelProps) {
+export default function ChatPanel({
+  onOpenDocument,
+  onResetDocument,
+  selectedDocumentIds,
+  labelId,
+  canQuery = true,
+  onSelectionPrune,
+}: ChatPanelProps) {
   const initialMessages = useMemo<ChatMessageItem[]>(
     () => [
       {
@@ -92,7 +100,10 @@ export default function ChatPanel({ onOpenDocument, onResetDocument, selectedDoc
         try {
           const docs = await listDocuments();
           const ready = docs.filter((d) => d.status === "ready").map((d) => d.filename);
-          setSelectedDocumentIds((prev) => prev.filter((id) => ready.includes(id)));
+          const nextIds = (selectedDocumentIds || []).filter((id) => ready.includes(id));
+          if (onSelectionPrune) {
+            onSelectionPrune(nextIds);
+          }
           if (ready.length === 0) {
             localStorage.removeItem("doc_selection");
           }

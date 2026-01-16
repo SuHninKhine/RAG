@@ -249,6 +249,12 @@ export default function HomePage() {
             onResetDocument={handleResetDocument}
             selectedDocumentIds={selectedDocumentIds}
             labelId={activeLabelId !== "all" ? activeLabelId : undefined}
+            onSelectionPrune={(next) => {
+              setSelectedDocumentIds(next);
+              if (next.length > 0) {
+                localStorage.setItem("doc_selection", next.join(","));
+              }
+            }}
             canQuery={
               activeLabelId !== "all"
                 ? readyForLabel.length > 0

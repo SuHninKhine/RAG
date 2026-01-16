@@ -157,7 +157,7 @@ class _SupabaseStorageClient:
             with urllib.request.urlopen(req) as resp:
                 return resp.read()
         except urllib.error.HTTPError as exc:
-            if exc.code == 404:
+            if exc.code == 404 or (exc.code == 400 and method in {"GET", "HEAD"}):
                 raise FileNotFoundError(url) from exc
             raise
 

@@ -143,6 +143,7 @@ async def on_startup() -> None:
 
 
 @app.get("/health")
+@app.head("/health")
 async def health_check() -> dict:
     """Basic health check for load balancers."""
 

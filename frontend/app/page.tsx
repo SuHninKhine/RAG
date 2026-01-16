@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { PanelLeft, PanelRight, PanelRightOpen } from "lucide-react";
 import { useSearchParams } from "next/navigation";
@@ -11,7 +11,7 @@ import DocumentViewerPanel from "./components/documentViewerPanel";
 import type { Label, SourceInfo } from "../lib/api";
 import { listDocuments, listLabels } from "../lib/api";
 
-export default function HomePage() {
+function HomePageContent() {
   const searchParams = useSearchParams();
   const [showSidebar, setShowSidebar] = useState(true);
   const [showDocPanel, setShowDocPanel] = useState(true);
@@ -294,5 +294,15 @@ export default function HomePage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <Suspense
+      fallback={<div className="flex h-screen items-center justify-center text-sm text-neutral-500">Loading...</div>}
+    >
+      <HomePageContent />
+    </Suspense>
   );
 }

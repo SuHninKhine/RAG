@@ -95,7 +95,7 @@ function ApplyLabelsModal({ document, labels, onClose, onLabelsUpdated }: ApplyL
               <div className="p-3 text-sm text-neutral-500">No labels found.</div>
             ) : (
               filtered.map((label) => {
-                const assigned = label.document_ids.includes(document.filename);
+                const assigned = label.document_ids.includes(document.id);
                 return (
                   <button
                     key={label.id}

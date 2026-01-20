@@ -283,7 +283,7 @@ export default function DocumentsPage() {
               className="inline-flex items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100"
               disabled={uploading}
             >
-              {uploading ? "Uploading..." : "Upload PDFs"}
+              {uploading ? "Uploading..." : "Upload documents"}
             </button>
             {uploadMessage && <span className="text-xs text-neutral-500">{uploadMessage}</span>}
           </div>

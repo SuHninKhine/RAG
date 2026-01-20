@@ -159,6 +159,20 @@ class _SupabaseStorageClient:
             with urllib.request.urlopen(req) as resp:
                 return resp.read()
         except urllib.error.HTTPError as exc:
+            try:
+                body = exc.read()
+                snippet = body[:500].decode("utf-8", errors="replace")
+            except Exception:
+                snippet = ""
+            config.logger.error(
+                "Supabase storage HTTP error",
+                extra={
+                    "method": method,
+                    "url": url,
+                    "status": exc.code,
+                    "body_snippet": snippet,
+                },
+            )
             if exc.code == 404 or (exc.code == 400 and method in {"GET", "HEAD", "DELETE"}):
                 raise FileNotFoundError(url) from exc
             raise
@@ -191,7 +205,20 @@ class _SupabaseStorageClient:
         payload = json.dumps(
             {"bucketId": self.bucket, "sourceKey": src, "destinationKey": dst}
         ).encode("utf-8")
-        self._request("POST", url, data=payload, content_type="application/json")
+        try:
+            self._request("POST", url, data=payload, content_type="application/json")
+            return
+        except urllib.error.HTTPError as exc:
+            if exc.code not in {400, 404}:
+                raise
+            config.logger.warning(
+                "Supabase move failed; falling back to copy+delete",
+                extra={"source": src, "destination": dst, "status": exc.code},
+            )
+        # Fallback: copy + delete when move API rejects the request.
+        data = self.download_bytes(src)
+        self.upload_bytes(dst, data)
+        self.delete(src)
 
 
 class SupabaseDocumentStorage(DocumentStorage):

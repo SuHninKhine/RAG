@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Optional
@@ -149,7 +150,8 @@ class _SupabaseStorageClient:
         return headers
 
     def _object_url(self, key: str) -> str:
-        return f"{self.base_url}/storage/v1/object/{self.bucket}/{key}"
+        safe_key = urllib.parse.quote(key, safe="")
+        return f"{self.base_url}/storage/v1/object/{self.bucket}/{safe_key}"
 
     def _request(self, method: str, url: str, data: Optional[bytes] = None, content_type: Optional[str] = None) -> bytes:
         req = urllib.request.Request(url, data=data, method=method, headers=self._headers(content_type))
